@@ -8403,23 +8403,14 @@ function buildWithPicSlipHtml(voter, layout, index) {
           <img src="${imgUrl}" alt="Slip Cut" class="with-pic-cut-img" loading="lazy" onerror="onWithPicImgError(this, '${folder}', '${wNum}', '${serialNo}')" />
         </div>
 
-        <!-- BOTTOM POLLING LOCATION & ROOM NUMBER (100% B&W) -->
+        <!-- BOTTOM POLLING LOCATION & ROOM NUMBER (ONLY BOOTH NO, NAME & ROOM NO) -->
         <div class="with-pic-polling-box-bw">
-          <div class="polling-box-stn-row">
-            🏫 <strong>मतदान का स्थान:</strong> ${boothName}
-          </div>
-          <div class="polling-box-room-row">
-            <span><strong>मतदान केंद्र क्र.:</strong> ${boothNo}</span>
-            <span>•</span>
+          <div class="polling-box-stn-head">
+            <span><strong>मतदान केंद्र क्र.: ${boothNo}</strong></span>
             <span><strong>${roomNo}</strong></span>
-            <span>•</span>
-            <span>वार्ड: <strong>${voter.ward_no}</strong></span>
-            <span>•</span>
-            <span>क्र.: <strong>${voter.serial_no}</strong></span>
           </div>
-          <div class="polling-box-voter-row">
-            <span>मतदाता: <strong>${voter.voter_name || ''} ${voter.voter_name_en ? `(${voter.voter_name_en})` : ''}</strong></span>
-            <span>EPIC: <strong>${voter.epic_no || '-'}</strong></span>
+          <div class="polling-box-stn-name">
+            <strong>मतदान केंद्र:</strong> ${boothName}
           </div>
         </div>
       </div>
@@ -8459,23 +8450,14 @@ function buildWithPicSlipHtml(voter, layout, index) {
         <img src="${imgUrl}" alt="Voter Slip Cut" class="with-pic-cut-img" loading="lazy" onerror="onWithPicImgError(this, '${folder}', '${wNum}', '${serialNo}')" />
       </div>
 
-      <!-- BOTTOM: VOTING LOCATION, SCHOOL NAME & ROOM NUMBER BOX (100% B&W) -->
+      <!-- BOTTOM: ONLY POLLING STATION NO, NAME & ROOM NO (BOLD / DARK) -->
       <div class="with-pic-polling-box-bw">
-        <div class="polling-box-stn-row">
-          🏫 <strong>मतदान का स्थान:</strong> ${boothName}
-        </div>
-        <div class="polling-box-room-row">
-          <span><strong>मतदान केंद्र संख्या:</strong> ${boothNo}</span>
-          <span>•</span>
+        <div class="polling-box-stn-head">
+          <span><strong>मतदान केंद्र संख्या: ${boothNo}</strong></span>
           <span><strong>${roomNo}</strong></span>
-          <span>•</span>
-          <span>वार्ड: <strong>${voter.ward_no}</strong></span>
-          <span>•</span>
-          <span>सरल क्र.: <strong>${voter.serial_no}</strong></span>
         </div>
-        <div class="polling-box-voter-row">
-          <span>नाम: <strong>${voter.voter_name || ''}</strong> <span style="font-size:6.8pt; color:#1e3a8a;">(${voter.voter_name_en || voter.ne || ''})</span></span>
-          <span>पहचान पत्र (EPIC): <strong>${voter.epic_no || '-'}</strong></span>
+        <div class="polling-box-stn-name">
+          <strong>मतदान केंद्र:</strong> ${boothName}
         </div>
       </div>
     </div>
