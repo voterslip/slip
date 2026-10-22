@@ -528,7 +528,7 @@ body {
 }
 
 .tab-pane.active {
-  display: block;
+  display: block !important;
 }
 
 @keyframes fadeIn {
@@ -3507,29 +3507,32 @@ html, body {
 
 .photo-preview-container {
   position: relative;
-  width: 160px;
-  height: 180px;
+  width: 145px;
+  height: 170px;
   border-radius: 8px;
-  overflow: hidden;
-  border: 2px solid #cbd5e1;
+  border: 2px dashed #3b82f6;
   background: #f8fafc;
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto 8px auto;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
 
 .candidate-preview-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
-.photo-upload-overlay {
+.photo-controls-group {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  width: 100%;
 }
 
 .selected-symbol-display {
@@ -4053,8 +4056,8 @@ html, body {
   .printing-bulk.theme-bw .candidate-banner-slogan {
     color: #000000 !important;
   }
-  .theme-bw .candidate-banner-symbol-col,
-  .printing-bulk.theme-bw .candidate-banner-symbol-col {
+  .theme-bw .candidate-symbol-box,
+  .printing-bulk.theme-bw .candidate-symbol-box {
     border: 1.5px solid #000000 !important;
     background: #ffffff !important;
   }
@@ -5268,6 +5271,248 @@ body.layout-10 .mini-booth-box {
 .admin-pass-btn-reset:hover {
   background: #dbeafe !important;
   border-color: #93c5fd !important;
+}
+
+/* Candidate Profile Photo Centering & Controls */
+.photo-upload-box {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  text-align: center !important;
+  width: 100% !important;
+}
+
+.photo-preview-container {
+  position: relative !important;
+  width: 150px !important;
+  height: 180px !important;
+  border-radius: 8px !important;
+  border: 2px dashed #3b82f6 !important;
+  background: #f8fafc !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 auto 10px auto !important;
+  overflow: hidden !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08) !important;
+  cursor: pointer !important;
+  transition: border-color 0.2s ease;
+}
+
+.photo-preview-container:hover {
+  border-color: #2563eb !important;
+}
+
+.photo-controls-group {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  margin: 0 auto !important;
+}
+
+#candidatePhotoBrowseBtn {
+  margin: 0 auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+}
+
+/* ==========================================================================
+   9 SLIPS PER A4 PAGE EQUAL HEIGHT, EXPANDED CANDIDATE SECTION & COMPACT VOTER SLIP
+   ========================================================================== */
+body.layout-9 .candidate-slip-card,
+.printing-bulk.layout-9 .candidate-slip-card,
+.a4-grid-9 .candidate-slip-card {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  margin-bottom: 0 !important;
+  box-sizing: border-box !important;
+  page-break-inside: avoid !important;
+}
+
+body.layout-9 .candidate-banner-top,
+.printing-bulk.layout-9 .candidate-banner-top {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  padding: 4px 6px !important;
+}
+
+body.layout-9 .candidate-banner-main-row,
+.printing-bulk.layout-9 .candidate-banner-main-row {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 4px !important;
+  width: 100% !important;
+}
+
+body.layout-9 .candidate-banner-photo-col,
+.printing-bulk.layout-9 .candidate-banner-photo-col {
+  width: 56px !important;
+  height: 62px !important;
+  min-width: 56px !important;
+  min-height: 62px !important;
+}
+
+body.layout-9 .candidate-banner-symbol-col,
+.printing-bulk.layout-9 .candidate-banner-symbol-col {
+  width: 56px !important;
+  min-width: 56px !important;
+}
+
+body.layout-9 .candidate-symbol-box,
+.printing-bulk.layout-9 .candidate-symbol-box {
+  width: 56px !important;
+  height: 62px !important;
+  min-width: 56px !important;
+  min-height: 62px !important;
+  padding: 1px !important;
+}
+
+body.layout-9 .candidate-symbol-box svg,
+body.layout-9 .candidate-symbol-box img,
+body.layout-9 .candidate-custom-symbol-img,
+.printing-bulk.layout-9 .candidate-symbol-box svg,
+.printing-bulk.layout-9 .candidate-symbol-box img,
+.printing-bulk.layout-9 .candidate-custom-symbol-img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  display: block !important;
+  margin: 0 auto !important;
+  transform: scale(1.08) !important;
+}
+
+body.layout-9 .candidate-banner-info-col,
+.printing-bulk.layout-9 .candidate-banner-info-col {
+  height: 62px !important;
+  padding: 0 2px !important;
+}
+
+body.layout-9 .candidate-banner-header,
+.printing-bulk.layout-9 .candidate-banner-header {
+  font-size: 5.4pt !important;
+  white-space: nowrap !important;
+  line-height: 1 !important;
+}
+
+body.layout-9 .candidate-banner-name,
+.printing-bulk.layout-9 .candidate-banner-name {
+  font-size: 11.5pt !important;
+  font-weight: 900 !important;
+  margin: 0 !important;
+  line-height: 1.1 !important;
+  white-space: nowrap !important;
+}
+
+body.layout-9 .candidate-banner-post,
+.printing-bulk.layout-9 .candidate-banner-post {
+  font-size: 6.8pt !important;
+  padding: 1px 6px !important;
+  line-height: 1.2 !important;
+}
+
+body.layout-9 .candidate-banner-gp,
+.printing-bulk.layout-9 .candidate-banner-gp {
+  font-size: 6.2pt !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  margin-top: 2px !important;
+  line-height: 1.2 !important;
+}
+
+body.layout-9 .candidate-banner-time,
+.printing-bulk.layout-9 .candidate-banner-time {
+  font-size: 5.4pt !important;
+  font-weight: 700 !important;
+  color: #047857 !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  margin-top: 1px !important;
+  line-height: 1.15 !important;
+}
+
+body.layout-9 .candidate-banner-symbol-label,
+.printing-bulk.layout-9 .candidate-banner-symbol-label {
+  font-size: 5.6pt !important;
+  max-width: 56px !important;
+  line-height: 1.05 !important;
+}
+
+body.layout-9 .candidate-banner-slogan,
+.printing-bulk.layout-9 .candidate-banner-slogan {
+  font-size: 6.8pt !important;
+  line-height: 1.25 !important;
+  padding: 2.5px 4px !important;
+  margin-top: 2px !important;
+}
+
+/* PERFORATION CUTTING DIVIDER PUSHED DOWN DIRECTLY ABOVE VOTER SLIP */
+.slip-perforation-divider,
+body.layout-9 .slip-perforation-divider,
+.printing-bulk.layout-9 .slip-perforation-divider {
+  flex: 0 0 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  padding: 1.5px 0 !important;
+  margin: 0 !important;
+  background: #ffffff !important;
+  border-top: 1px dashed #475569 !important;
+  border-bottom: 1px dashed #475569 !important;
+  font-size: 5.4pt !important;
+  font-weight: 800 !important;
+  color: #b91c1c !important;
+}
+
+/* OFFICIAL B&W VOTER SLIP: COMPACT AT BOTTOM WITH ZERO WASTED GAP */
+.official-bottom-bw-slip,
+body.layout-9 .official-bottom-bw-slip,
+.printing-bulk.layout-9 .official-bottom-bw-slip {
+  flex: 0 0 auto !important;
+  padding: 3px 6px !important;
+  background: #ffffff !important;
+  font-size: 6.2pt !important;
+  color: #000000 !important;
+  box-sizing: border-box !important;
+}
+
+body.layout-9 .bw-header,
+.printing-bulk.layout-9 .bw-header {
+  margin-bottom: 1.5px !important;
+  padding-bottom: 1.5px !important;
+}
+
+body.layout-9 .bw-grid,
+.printing-bulk.layout-9 .bw-grid {
+  gap: 0.5px 4px !important;
+  margin: 1.5px 0 !important;
+}
+
+body.layout-9 .bw-booth-box,
+.printing-bulk.layout-9 .bw-booth-box {
+  margin-top: 1.5px !important;
+  padding: 1.5px 3px !important;
+}
+
+/* Topbar Sync Button Restricted Strictly to Super Admin */
+#topbarSyncButton {
+  display: none !important;
+}
+html.is-superadmin-session #topbarSyncButton {
+  display: inline-flex !important;
 }
 
 /* ==========================================================================

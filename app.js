@@ -1,3 +1,347 @@
+const KAMLA_DEFAULT_PHOTO = "./assets/kamala_photo.jpg";
+
+// =========================================================================
+// CANDIDATE GOOGLE SHEET CLIENT-SIDE SYNC ENGINE (HOURLY / ON DEMAND)
+// =========================================================================
+async function syncCandidatesFromGoogleSheetClient(showNotification = false) {
+  const isLocalServer = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const bust = Date.now();
+  
+  if (showNotification && typeof showToast === 'function') {
+    showToast('⏳ गूगल शीट से प्रत्याशी डेटा सिंक किया जा रहा है...');
+  }
+
+  // A. If on local node server, use high-speed backend sync
+  if (isLocalServer) {
+    try {
+      const res = await fetch(`/api/sync-candidates?_t=${bust}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success) {
+          localStorage.setItem('last_sheet_candidate_sync', String(bust));
+          await loadAdminUsersList(true);
+          if (showNotification && typeof showToast === 'function') {
+            showToast(`✅ गूगल शीट से सिंक पूर्ण! (कुल: ${data.total || 0}, नए: +${data.added || 0}, अपडेट: ~${data.updated || 0})`);
+          }
+          if (typeof renderAdminCandTab === 'function') renderAdminCandTab();
+          return data;
+        }
+      }
+    } catch(e) {
+      console.warn('Local API sync fallback to direct sheet fetch:', e);
+    }
+  }
+
+  // B. Direct Google Apps Script fetch (For GitHub Pages & Client Mode)
+  const scriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec';
+  if (scriptUrl) {
+    try {
+      const fetchUrl = `${scriptUrl}${scriptUrl.includes('?') ? '&' : '?'}action=getCandidates&_t=${bust}`;
+      const res = await fetch(fetchUrl);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.candidates)) {
+          if (!window.PORTAL_USERS_DATA) window.PORTAL_USERS_DATA = { users: [], candidates: {} };
+          if (!window.PORTAL_USERS_DATA.candidates) window.PORTAL_USERS_DATA.candidates = {};
+          
+          data.candidates.forEach(sc => {
+            const uId = sc.id || ('cand_' + sc.username);
+            const uName = sc.username;
+            const candProfile = {
+              user_id: uId,
+              candidate_name: sc.candidate_name,
+              mobile: sc.mobile,
+              post: sc.post,
+              panchayat: sc.panchayat,
+              ward: sc.ward,
+              symbol_name: sc.symbol_name,
+              symbol_icon: sc.symbol_icon,
+              custom_symbol_url: sc.custom_symbol_url,
+              photo_url: sc.photo_url,
+              slogan: sc.slogan,
+              election_date: sc.election_date,
+              election_time: sc.election_time,
+              show_banner_on_slip: sc.show_banner_on_slip
+            };
+            window.PORTAL_USERS_DATA.candidates[uId] = candProfile;
+            window.PORTAL_USERS_DATA.candidates[uName] = candProfile;
+            try {
+              localStorage.setItem('candidate_profile_' + uId, JSON.stringify(candProfile));
+              localStorage.setItem('candidate_profile_' + uName, JSON.stringify(candProfile));
+            } catch(_) {}
+
+            // Upsert in State.adminControlUsers
+            if (State.adminControlUsers) {
+              const exIdx = State.adminControlUsers.findIndex(u => (u.id === uId || u.username === uName));
+              let scTabs = sc.allowed_tabs;
+              if (typeof scTabs === 'string') {
+                try { scTabs = JSON.parse(scTabs); } catch(e) { scTabs = scTabs.split(',').map(s=>s.trim()).filter(Boolean); }
+              }
+              if (!Array.isArray(scTabs)) {
+                scTabs = ['searchTab', 'alphaTab', 'bulkSlipTab', 'candidateProfileTab'];
+              }
+              scTabs = scTabs.filter(t => t !== 'directoryTab');
+              const candUserObj = {
+                id: uId,
+                username: uName,
+                password: sc.password,
+                full_name: sc.candidate_name,
+                name: sc.candidate_name,
+                mobile: sc.mobile,
+                role: 'CANDIDATE',
+                status: sc.status || 'ACTIVE',
+                allowed_panchayats: sc.panchayat,
+                allowed_wards: sc.ward || 'ALL',
+                allowed_tabs: scTabs,
+                candidate_mode: sc.candidate_mode || 'user_edit',
+                can_print: sc.can_print !== false,
+                can_download: sc.can_download !== false,
+                candidate: candProfile
+              };
+
+              // If currently logged in user is this candidate, update active session in real-time
+              if (State.currentUser && (State.currentUser.id === uId || State.currentUser.username === uName || State.currentUser.id === ('cand_' + uName))) {
+                State.currentUser.allowed_tabs = scTabs;
+                State.currentUser.candidate_mode = sc.candidate_mode || 'user_edit';
+                State.currentUser.can_print = candUserObj.can_print;
+                State.currentUser.can_download = candUserObj.can_download;
+                State.currentUser.candidate = candProfile;
+                try {
+                  const sk = getSessionStorageKey();
+                  localStorage.setItem(sk, JSON.stringify(State.currentUser));
+                } catch(_) {}
+                if (typeof enforceGatekeeperState === 'function') enforceGatekeeperState();
+              }
+              if (exIdx >= 0) State.adminControlUsers[exIdx] = candUserObj;
+              else State.adminControlUsers.push(candUserObj);
+            }
+          });
+
+          localStorage.setItem('last_sheet_candidate_sync', String(bust));
+          if (showNotification && typeof showToast === 'function') {
+            showToast(`✅ गूगल शीट से ${data.candidates.length} प्रत्याशी सफलतापूर्वक सिंक!`);
+          }
+          if (typeof renderAdminCandTab === 'function') renderAdminCandTab();
+          return data;
+        }
+      }
+    } catch(err) {
+      console.warn('Direct Apps Script candidate sync notice:', err);
+      if (showNotification && typeof showToast === 'function') {
+        showToast('गूगल शीट से सिंक करने में समस्या: ' + err.message);
+      }
+    }
+  }
+}
+
+// Hourly Background Interval for client (1 hour / 3600000ms)
+setInterval(() => {
+  if (document.visibilityState === 'hidden') return;
+  const lastSync = parseInt(localStorage.getItem('last_sheet_candidate_sync') || '0', 10);
+  if (Date.now() - lastSync >= 3600000) {
+    syncCandidatesFromGoogleSheetClient(false);
+  }
+}, 60000);
+
+
+
+// Automatic Purge of Stale Candidate Test Cache & Slogans
+// Safe Purge: Clean up only corrupt test caches, never delete active sessions!
+(function purgeStaleCandidateCache() {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      // Never wipe login session keys
+      if (k.includes('session') || k === 'panchayat_user_session') continue;
+      if (k.startsWith('candidate_profile_') || k === 'portal_custom_users') {
+        const val = localStorage.getItem(k) || '';
+        if (val.toLowerCase().includes('narendra ji') || val.toLowerCase().includes('nrendra ji')) {
+          localStorage.removeItem(k);
+        }
+      }
+    }
+  } catch(_) {}
+})();
+
+// ==========================================================================
+// TRI-PORTAL MASTER COMMAND & SETTINGS ENGINE (GLOBAL STATE & CANDIDATE-AWARE)
+// ==========================================================================
+var triPortalSettings = {
+  voter_portal: {
+    status: 'ACTIVE',
+    election_date: '15 अक्टूबर 2026',
+    election_time: 'प्रातः 7:00 बजे से सायं 6:00 बजे तक',
+    modules: { search: true, alpha: true, slips: true, candidate_edit: true }
+  },
+  blo_portal: { status: 'ACTIVE', block_bulk_slips: true, scope_restricted: true, cell_directory: true },
+  election_date: '15 अक्टूबर 2026',
+  election_time: 'प्रातः 7:00 बजे से सायं 6:00 बजे तक'
+};
+
+function getGlobalElectionDate() {
+  return (
+    (typeof triPortalSettings !== 'undefined' && (triPortalSettings?.voter_portal?.election_date || triPortalSettings?.election_date)) ||
+    (typeof window !== 'undefined' && window.PORTAL_USERS_DATA?.election_date) ||
+    '15 अक्टूबर 2026'
+  );
+}
+
+function getGlobalElectionTime() {
+  return (
+    (typeof triPortalSettings !== 'undefined' && (triPortalSettings?.voter_portal?.election_time || triPortalSettings?.election_time)) ||
+    (typeof window !== 'undefined' && window.PORTAL_USERS_DATA?.election_time) ||
+    'प्रातः 7:00 बजे से सायं 6:00 बजे तक'
+  );
+}
+
+function getActiveCandidate() {
+  if (typeof State === 'undefined' || !State || !State.currentUser) return null;
+  const u = State.currentUser;
+  const uId = String(u.id || u.username || '').toLowerCase();
+  const altId = uId.startsWith('cand_') ? uId.replace('cand_', '') : ('cand_' + uId);
+
+  // STRICT OWNERSHIP CHECK: A candidate object must belong to CURRENT user ONLY
+  function belongsToCurrentUser(c) {
+    if (!c || typeof c !== 'object') return false;
+    const cid = String(c.user_id || '').toLowerCase();
+    if (!cid) return false;
+    return cid === uId || cid === altId || (u.username && cid === String(u.username).toLowerCase());
+  }
+
+  // 1. Check State.currentUser.candidate
+  if (u.candidate && belongsToCurrentUser(u.candidate)) {
+    return u.candidate;
+  }
+
+  // 2. Check State.currentCandidate (only if belongs to current user!)
+  if (State.currentCandidate && belongsToCurrentUser(State.currentCandidate)) {
+    return State.currentCandidate;
+  }
+
+  // 3. Check window.PORTAL_USERS_DATA.candidates
+  if (window.PORTAL_USERS_DATA && window.PORTAL_USERS_DATA.candidates) {
+    const cMap = window.PORTAL_USERS_DATA.candidates;
+    const c = cMap[u.id] || cMap[u.username] || cMap[uId] || cMap[altId];
+    if (c && (belongsToCurrentUser(c) || !c.user_id)) {
+      c.user_id = u.id || u.username;
+      return c;
+    }
+  }
+
+  // 4. Check localStorage strictly for current user
+  try {
+    const cached = localStorage.getItem('candidate_profile_' + u.id) || 
+                   (u.username && localStorage.getItem('candidate_profile_' + u.username)) ||
+                   (altId && localStorage.getItem('candidate_profile_' + altId));
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && belongsToCurrentUser(parsed)) return parsed;
+    }
+  } catch(_) {}
+
+  return null;
+}
+
+function getCurrentElectionDate() {
+  const isCand = (typeof isCandidateUser === 'function' && isCandidateUser(State?.currentUser)) || 
+                 (State?.currentUser?.role === 'CANDIDATE') || 
+                 (typeof getPortalContext === 'function' && getPortalContext() === 'voter' && State?.currentUser);
+  if (isCand) {
+    const cand = getActiveCandidate();
+    if (cand && cand.election_date) {
+      return cand.election_date;
+    }
+  }
+  return getGlobalElectionDate();
+}
+
+function getCurrentElectionTime() {
+  const isCand = (typeof isCandidateUser === 'function' && isCandidateUser(State?.currentUser)) || 
+                 (State?.currentUser?.role === 'CANDIDATE') || 
+                 (typeof getPortalContext === 'function' && getPortalContext() === 'voter' && State?.currentUser);
+  if (isCand) {
+    const cand = getActiveCandidate();
+    if (cand && cand.election_time) {
+      return cand.election_time;
+    }
+  }
+  return getGlobalElectionTime();
+}
+
+function applyGlobalElectionDateToUI() {
+  if (typeof document === 'undefined') return;
+  const curDate = getCurrentElectionDate();
+  const curTime = getCurrentElectionTime();
+  const gDate = getGlobalElectionDate();
+  const gTime = getGlobalElectionTime();
+  const cand = getActiveCandidate();
+
+  // Topbar date (in candidate login, shows candidate-specific date from Super Admin)
+  const topbarDate = document.getElementById('topbarElectionDateText');
+  if (topbarDate) {
+    topbarDate.textContent = curDate;
+  }
+
+  // Candidate Profile Tab inputs (displays Super Admin configured date & time for candidate)
+  const candDateInput = document.getElementById('candidateElectionDateInput');
+  if (candDateInput) {
+    candDateInput.value = (cand && cand.election_date) ? cand.election_date : curDate;
+  }
+  const candTimeInput = document.getElementById('candidateElectionTimeInput');
+  if (candTimeInput) {
+    candTimeInput.value = (cand && cand.election_time) ? cand.election_time : curTime;
+  }
+
+  // Super Admin Voter Portal control inputs
+  const vDateInp = document.getElementById('voterPortalElectionDateInput');
+  if (vDateInp && (triPortalSettings?.voter_portal?.election_date || triPortalSettings?.election_date)) {
+    vDateInp.value = triPortalSettings.voter_portal?.election_date || triPortalSettings.election_date;
+  }
+  const vTimeInp = document.getElementById('voterPortalElectionTimeInput');
+  if (vTimeInp && (triPortalSettings?.voter_portal?.election_time || triPortalSettings?.election_time)) {
+    vTimeInp.value = triPortalSettings.voter_portal?.election_time || triPortalSettings.election_time;
+  }
+}
+
+async function saveVoterPortalElectionDate() {
+  const dateInput = document.getElementById('voterPortalElectionDateInput');
+  const timeInput = document.getElementById('voterPortalElectionTimeInput');
+  const newDate = (dateInput ? dateInput.value : '').trim() || '15 अक्टूबर 2026';
+  const newTime = (timeInput ? timeInput.value : '').trim() || 'प्रातः 7:00 बजे से सायं 6:00 बजे तक';
+
+  if (!triPortalSettings.voter_portal) triPortalSettings.voter_portal = {};
+  triPortalSettings.voter_portal.election_date = newDate;
+  triPortalSettings.voter_portal.election_time = newTime;
+  triPortalSettings.election_date = newDate;
+  triPortalSettings.election_time = newTime;
+
+  applyGlobalElectionDateToUI();
+
+  try {
+    localStorage.setItem('tri_portal_master_settings', JSON.stringify(triPortalSettings));
+  } catch (e) {}
+
+  try {
+    const res = await fetch('/api/portal-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(triPortalSettings)
+    });
+    if (res.ok) {
+      if (typeof showToast === 'function') {
+        showToast('✅ वोटर पोर्टल मतदान दिनांक (' + newDate + ') एवं समय (' + newTime + ') सफलतापूर्वक अपडेट!');
+      }
+      return;
+    }
+  } catch (err) {}
+
+  if (typeof showToast === 'function') {
+    showToast('✅ मतदान दिनांक (' + newDate + ') स्थानीय रूप से सुरक्षित!');
+  }
+}
+
+
 
 // ==========================================================================
 // SUPER ADMIN 3 DEDICATED TABS & GRANULAR PERMISSIONS CONTROLLER
@@ -871,20 +1215,39 @@ function renderAdminCandTab() {
   if (!tbody) return;
 
   const users = State.adminControlUsers || [];
-  const candUsers = users.filter(u => u.type === 'CANDIDATE' || u.category === 'CANDIDATE' || (u.id && u.id.startsWith('cand_')));
-  const overrides = getUserOverrides();
+  // Robust candidate filter: matching role, id prefix, username prefix, or candidate object
+  const candUsers = users.filter(u => {
+    if (!u) return false;
+    const uid = String(u.id || '').toLowerCase();
+    const uname = String(u.username || '').toLowerCase();
+    const urole = String(u.role || '').toUpperCase();
+    return (
+      urole === 'CANDIDATE' ||
+      urole === 'प्रत्याशी' ||
+      uid.startsWith('cand_') ||
+      uname.startsWith('cand_') ||
+      uname === 'sarpanch' ||
+      u.type === 'CANDIDATE' ||
+      u.category === 'CANDIDATE' ||
+      (u.candidate && (u.candidate.candidate_name || u.candidate.panchayat))
+    );
+  });
 
+  const overrides = getUserOverrides();
   const searchVal = (document.getElementById('adminCandSearchInput') ? document.getElementById('adminCandSearchInput').value : '').toLowerCase().trim();
   const gpFilter = document.getElementById('adminCandGpFilter') ? document.getElementById('adminCandGpFilter').value : 'ALL';
 
   const filtered = candUsers.filter(c => {
     const cid = String(c.id || c.username || '');
-    if (gpFilter !== 'ALL' && c.panchayat !== gpFilter) return false;
+    const cGp = c.panchayat || c.allowed_panchayats || (c.candidate && c.candidate.panchayat) || '';
+    if (gpFilter !== 'ALL' && cGp !== gpFilter) return false;
     if (searchVal) {
       const match = (c.name && String(c.name).toLowerCase().includes(searchVal)) ||
-                    (c.panchayat && String(c.panchayat).toLowerCase().includes(searchVal)) ||
+                    (c.full_name && String(c.full_name).toLowerCase().includes(searchVal)) ||
+                    (cGp && String(cGp).toLowerCase().includes(searchVal)) ||
                     (c.mobile && String(c.mobile).includes(searchVal)) ||
-                    (cid && cid.toLowerCase().includes(searchVal));
+                    (cid && cid.toLowerCase().includes(searchVal)) ||
+                    (c.candidate && c.candidate.candidate_name && String(c.candidate.candidate_name).toLowerCase().includes(searchVal));
       if (!match) return false;
     }
     return true;
@@ -900,14 +1263,15 @@ function renderAdminCandTab() {
   filtered.forEach(c => {
     const cid = c.id || c.username;
     const ov = overrides[cid] || {};
-    const pass = ov.password || c.password || 'bhinai2026';
+    const pass = ov.password || c.password || 'cand@2026';
     const status = ov.status || c.status || 'ACTIVE';
     const isActive = (status === 'ACTIVE');
     const canSearch = (ov.can_search !== undefined) ? ov.can_search : (c.can_search !== undefined ? (c.can_search === true || c.can_search === 1) : true);
     const canView = (ov.can_view !== undefined) ? ov.can_view : (c.can_view !== undefined ? (c.can_view === true || c.can_view === 1) : true);
     const canPrint = (ov.can_print !== undefined) ? ov.can_print : (c.can_print !== undefined ? (c.can_print === true || c.can_print === 1) : true);
     const canDownload = (ov.can_download !== undefined) ? ov.can_download : (c.can_download !== undefined ? (c.can_download === true || c.can_download === 1) : true);
-    const scope = ov.allowed_panchayats || c.panchayat || 'ALL';
+    const cGp = c.panchayat || c.allowed_panchayats || (c.candidate && c.candidate.panchayat) || '-';
+    const scope = ov.allowed_panchayats || cGp || 'ALL';
 
     let cand = c.candidate;
     if (!cand) {
@@ -921,25 +1285,31 @@ function renderAdminCandTab() {
     const candSymbol = (cand && cand.symbol_name) || '';
     const candPhoto = (cand && cand.photo_url) || '';
     const agentName = (cand && cand.agent_name) || '';
+    const candElectionDate = (cand && cand.election_date) || getGlobalElectionDate();
+    const candElectionTime = (cand && cand.election_time) || getGlobalElectionTime();
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
-        <strong style="color:#d97706;">${cid}</strong>
+        <strong style="color:#d97706; font-size:0.9rem;">${cid}</strong>
       </td>
       <td>
         <div style="display:flex; align-items:center; gap:8px;">
-          ${candPhoto ? `<img src="${candPhoto}" style="width:28px; height:28px; border-radius:50%; object-fit:cover; border:1.5px solid #d97706; flex-shrink:0;">` : `<span style="font-size:1.1rem; flex-shrink:0;">👤</span>`}
+          ${candPhoto ? `<img src="${candPhoto}" style="width:30px; height:30px; border-radius:50%; object-fit:cover; border:1.5px solid #d97706; flex-shrink:0;">` : `<span style="font-size:1.2rem; flex-shrink:0;">👤</span>`}
           <div>
-            <div style="font-weight:700; color:#0f172a;">${candName}</div>
+            <div style="font-weight:700; color:#0f172a; font-size:0.9rem;">${candName}</div>
             <div style="font-size:0.75rem; color:#64748b;">${c.designation || (cand && cand.post) || 'प्रत्याशी'} ${agentName ? `• एजेंट: ${agentName}` : ''}</div>
           </div>
         </div>
       </td>
       <td>
-        <div style="font-weight:700; color:#1e40af;">🏛️ ${c.panchayat || (cand && cand.panchayat) || '-'}</div>
+        <div style="font-weight:700; color:#1e40af;">🏛️ ${cGp}</div>
         <div style="font-size:0.75rem; color:#d97706; font-weight:700;">वार्ड: ${c.allowed_wards || (cand && cand.ward) || 'समस्त'}</div>
         ${candSymbol ? `<span class="badge" style="background:#fef3c7; color:#92400e; font-size:0.72rem; padding:2px 6px; border-radius:4px; margin-top:2px; display:inline-block;">🗳️ ${candSymbol}</span>` : ''}
+        <!-- प्रत्याशीवार मतदान दिनांक एवं समय बैज -->
+        <div style="font-size:0.73rem; color:#065f46; font-weight:700; margin-top:3px; background:#ecfdf5; padding:2px 6px; border-radius:4px; border:1px solid #a7f3d0; display:inline-block;">
+          📅 ${candElectionDate} <span style="color:#64748b; font-weight:500;">(${candElectionTime})</span>
+        </div>
       </td>
       <td>
         <a href="tel:${candMobile}" style="font-weight:700; color:#0284c7; text-decoration:none;">📞 ${candMobile}</a>
@@ -972,7 +1342,7 @@ function renderAdminCandTab() {
         </div>
         <div class="d-flex align-items-center gap-1 mt-1" style="min-height:36px;">
           <select class="form-select admin-scope-select" onchange="updateUserScope('${cid}', this.value)">
-            <option value="${c.panchayat || 'ALL'}" ${scope === (c.panchayat || 'ALL') ? 'selected' : ''}>🏛️ ${c.panchayat || 'पंचायत'}</option>
+            <option value="${cGp !== '-' ? cGp : 'ALL'}" ${scope === cGp ? 'selected' : ''}>🏛️ ${cGp !== '-' ? cGp : 'पंचायत'}</option>
             <option value="ALL" ${scope === 'ALL' ? 'selected' : ''}>🌐 समस्त 30 पं.</option>
           </select>
           <button type="button" class="btn btn-scope-allot" onclick="openCustomScopeModal('${cid}')" title="कस्टम आवंटन">🎯</button>
@@ -985,7 +1355,7 @@ function renderAdminCandTab() {
       </td>
       <td style="text-align:center;">
         <div class="d-flex justify-content-center gap-1">
-          <button type="button" class="btn btn-xs btn-primary" onclick="openAdminCandidateModal('${cid}')" title="प्रत्याशी विवरण, फोटो व चुनाव चिन्ह संपादित करें" style="font-weight:700; padding:3px 7px;">✏️ संपादन</button>
+          <button type="button" class="btn btn-xs btn-primary" onclick="openAdminCandidateModal('${cid}')" title="प्रत्याशी विवरण, फोटो, चुनाव चिन्ह एवं मतदान दिनांक संपादित करें" style="font-weight:700; padding:4px 8px;">✏️ संपादन</button>
           <button type="button" class="admin-pass-btn admin-pass-btn-reset" onclick="resetUserPasswordToDefault('${cid}')" title="डिफ़ॉल्ट पासवर्ड करें">🔄 डिफ़ॉल्ट</button>
         </div>
       </td>
@@ -1148,27 +1518,17 @@ function renderAdminTopAdminsTab() {
 function canUserPrint() {
   if (!State.currentUser) return false;
   const u = State.currentUser;
-  if (u.role === 'SUPER_ADMIN' || u.role === 'VYAVASTHAPAK') return true;
+  if (u.role === 'SUPER_ADMIN') return true;
 
-  // 1. Direct explicit permission takes highest priority
+  // 1. Direct explicit permission takes highest priority (Strict!)
   if (u.can_print !== undefined && u.can_print !== null) {
-    return (u.can_print === true || u.can_print === 1 || u.can_print === 'true');
+    return (u.can_print === true || u.can_print === 1 || String(u.can_print).toLowerCase() === 'true');
   }
 
   // 2. Local override check
-  const ov = getUserOverrides()[u.id || u.username] || {};
+  const ov = (typeof getUserOverrides === 'function' ? getUserOverrides()[u.id || u.username] : null) || {};
   if (ov.can_print !== undefined && ov.can_print !== null) {
-    return (ov.can_print === true || ov.can_print === 1 || ov.can_print === 'true');
-  }
-
-  // 3. Candidate & Agent: default to allowed unless explicitly disabled
-  if (u.role === 'CANDIDATE' || u.category === 'CANDIDATE' || String(u.id || '').startsWith('cand_')) {
-    return true;
-  }
-
-  // 4. Tab-based permission: if user has bulkSlipTab allowed, allow printing
-  if (Array.isArray(u.allowed_tabs) && u.allowed_tabs.includes('bulkSlipTab')) {
-    return true;
+    return (ov.can_print === true || ov.can_print === 1 || String(ov.can_print).toLowerCase() === 'true');
   }
 
   return false;
@@ -1177,15 +1537,20 @@ function canUserPrint() {
 function canUserDownload() {
   if (!State.currentUser) return false;
   const u = State.currentUser;
-  if (u.role === 'SUPER_ADMIN' || u.role === 'VYAVASTHAPAK' || u.role === 'INCHARGE' || u.role === 'BLOCK_PRABHARI') return true;
+  if (u.role === 'SUPER_ADMIN') return true;
+
+  // 1. Direct explicit permission takes highest priority (Strict!)
   if (u.can_download !== undefined && u.can_download !== null) {
-    return (u.can_download === true || u.can_download === 1 || u.can_download === 'true');
+    return (u.can_download === true || u.can_download === 1 || String(u.can_download).toLowerCase() === 'true');
   }
-  const ov = getUserOverrides()[u.id || u.username] || {};
+
+  // 2. Local override check
+  const ov = (typeof getUserOverrides === 'function' ? getUserOverrides()[u.id || u.username] : null) || {};
   if (ov.can_download !== undefined && ov.can_download !== null) {
-    return (ov.can_download === true || ov.can_download === 1 || ov.can_download === 'true');
+    return (ov.can_download === true || ov.can_download === 1 || String(ov.can_download).toLowerCase() === 'true');
   }
-  return true;
+
+  return false;
 }
 
 // -------------------------------------------------------------------------
@@ -1229,7 +1594,6 @@ function populateGpFilterDropdowns() {
   // 1. Core tabs
   fillSelect(document.getElementById('filterGp'), isSuper);
   fillSelect(document.getElementById('dirGpSelect'), false);
-  fillSelect(document.getElementById('withPicGpSelect'), false);
 
   // Requirement 2: alphaGpSelect starts with prompt so it does not auto-render all 30 GPs
   const alphaSel = document.getElementById('alphaGpSelect');
@@ -1250,6 +1614,7 @@ function populateGpFilterDropdowns() {
   }
 
   fillSelect(document.getElementById('bulkGpSelect'), false);
+  fillSelect(document.getElementById('withPicGpSelect'), false);
 
   // 2. Candidate Tab
   const candGp = document.getElementById('candidateGpSelect');
@@ -1326,7 +1691,7 @@ function populateGpFilterDropdowns() {
     gpGroup.label = '🏛️ ग्राम पंचायत चुनें (30 Panchayats)';
     allowedGps.forEach(gp => {
       const opt = document.createElement('option');
-      opt.value = 'GP:' + gp.name_hi;
+      opt.value = 'GP_' + gp.name_hi;
       opt.textContent = `🏛️ ग्रा.पं. ${gp.name_hi} (${gp.code || ''})`;
       gpGroup.appendChild(opt);
     });
@@ -1446,7 +1811,7 @@ async function handleSaveCellSubmit(event) {
   setCustomUserPassword(cId, pass);
 
   closeAddEditCellModal();
-  if (typeof renderBloPassTable === 'function') renderBloPassTable();
+  if (typeof renderBloPassTable === 'function') if (typeof renderBloPassTable === 'function') renderBloPassTable();
   showToast(`✅ प्रकोष्ठ कार्मिक '${name}' सफलतापूर्वक सुरक्षित!`);
 }
 
@@ -1461,7 +1826,7 @@ function deleteCellPersonnel(cellId, cellName) {
   localStorage.setItem('portal_custom_cell_personnel', JSON.stringify(filtered));
   setCustomUserStatus(cellId, 'INACTIVE');
 
-  if (typeof renderBloPassTable === 'function') renderBloPassTable();
+  if (typeof renderBloPassTable === 'function') if (typeof renderBloPassTable === 'function') renderBloPassTable();
   showToast(`🗑️ कार्मिक '${cellName || cellId}' हटा दिया गया!`);
 }
 
@@ -1777,7 +2142,7 @@ async function adminUpdateUserScope(userId, scopeVal) {
   }
 
   showToast(`✅ '${userId}' का अधिकार सेट: ${scopeVal === 'ALL_30_GP' || scopeVal === 'SEARCH_30_GP' ? 'समस्त 30 ग्रा.पं. वोटर सर्च' : (scopeVal === 'PANCHAYAT' ? 'पूरी ग्राम पंचायत' : 'केवल बूथ/डायरेक्टरी')}`);
-  if (typeof renderBloPassTable === 'function') renderBloPassTable();
+  if (typeof renderBloPassTable === 'function') if (typeof renderBloPassTable === 'function') renderBloPassTable();
 }
 
 
@@ -2025,7 +2390,6 @@ const State = {
   bulkHouse: '',
   bulkPage: 1,
   bulkFilteredVoters: [],
-  // With-Pic Slip Generator State (मूल पर्ची कटिंग्स + अंग्रेजी वर्णानुक्रम)
   withPicLayout: 9,      // 9, 15, 18, 21, or 'thermal'
   withPicSortOrder: 'alpha', // Default: 'alpha' (English A-Z) or 'serial'
   withPicScope: 'PENDING',   // 'ALL', 'PENDING', 'DELIVERED'
@@ -2039,7 +2403,7 @@ const State = {
   config: {
     adminSheetUrl: '',
     voterSheetUrl: '',
-    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbzhZ-VdcGJ_nUuG40vm-MyMNJEnLfTgk3kBqyhi1OIefCgW9Smw0XweLTUd7D6o710lpA/exec'
+    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec'
   }
 };
 
@@ -2048,9 +2412,10 @@ const State = {
 // ==========================================================================
 document.addEventListener('DOMContentLoaded', async () => {
   initMasterData();
-  try { await loadAdminUsersList(true); } catch(e) {}
   initSession();
   initUiElements();
+  try { await loadTriPortalSettings(); } catch(e) {}
+  try { await loadAdminUsersList(true); } catch(e) {}
   startLivePermissionSyncWatcher();
 });
 
@@ -2089,7 +2454,10 @@ async function ensurePanchayatVotersLoaded(gpCode) {
   if (loadedGps.has(gp.code)) return;
 
   try {
-    const res = await fetch(`data/${gp.name_en}.json`);
+    let res = await fetch(`data/${gp.name_en}.json`);
+    if (!res.ok) {
+      res = await fetch(`data/${gp.name_en.toUpperCase()}.json`);
+    }
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
@@ -2163,7 +2531,7 @@ function initMasterData() {
     State.panchayats = window.MASTER_DATA.panchayats || [];
     State.adminUsers = window.MASTER_DATA.admin_users || [];
     State.deletedVoters = window.MASTER_DATA.deleted_voters || [];
-    State.config.appsScriptUrl = localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbzhZ-VdcGJ_nUuG40vm-MyMNJEnLfTgk3kBqyhi1OIefCgW9Smw0XweLTUd7D6o710lpA/exec';
+    State.config.appsScriptUrl = localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec';
     const appsScriptInput = document.getElementById('appsScriptUrlInput');
     if (appsScriptInput && State.config.appsScriptUrl) {
       appsScriptInput.value = State.config.appsScriptUrl;
@@ -2245,7 +2613,6 @@ async function ensureMasterDirectoryLoaded() {
 }
 
 function getPortalContext() {
-  if (window.PORTAL_TYPE) return window.PORTAL_TYPE.toLowerCase();
   const url = new URL(window.location.href);
   const pParam = url.searchParams.get('portal');
   if (pParam) return pParam.toLowerCase();
@@ -2256,10 +2623,10 @@ function getPortalContext() {
   if (path.includes('blo-portal') || path.includes('/blo') || host.includes('blo')) {
     return 'blo';
   }
-  if (path.includes('voter-portal') || path.includes('/voter') || host.includes('voter') || path.includes('/slip')) {
+  if (path.includes('voter-portal') || path.includes('/voter') || host.includes('voter')) {
     return 'voter';
   }
-  return 'voter';
+  return 'master';
 }
 
 function getSessionStorageKey() {
@@ -2270,11 +2637,23 @@ function getSessionStorageKey() {
 function syncCurrentUserWithConfiguredUsers() {
   if (!State.currentUser) return;
   const uId = String(State.currentUser.id || State.currentUser.username || '').toLowerCase();
+  const boothExact = State.currentUser.booth_no ? `blo_${String(State.currentUser.booth_no).trim().toLowerCase()}` : '';
   if (!State.adminControlUsers || State.adminControlUsers.length === 0) return;
-  const matched = State.adminControlUsers.find(x => 
-    (x.id && String(x.id).toLowerCase() === uId) || 
-    (x.username && String(x.username).toLowerCase() === uId)
-  );
+  const uName = String(State.currentUser.username || State.currentUser.id || '').toLowerCase();
+  const matched = State.adminControlUsers.find(x => {
+    const xU = String(x.username || '').toLowerCase();
+    const xId = String(x.id || '').toLowerCase();
+    const xName = String(x.full_name || x.fullName || x.candidate_name || '').toLowerCase();
+    const xBooth = x.booth_no ? `blo_${String(x.booth_no).trim().toLowerCase()}` : '';
+    return xU === uId || xId === uId || xU === uName || xId === uName ||
+           (xId === ('cand_' + uName)) || (xU === ('cand_' + uName)) ||
+           (('cand_' + xId) === uName) || (('cand_' + xU) === uName) ||
+           (uName.startsWith('cand_') && (xU === uName.replace(/^cand_/, '') || xId === uName.replace(/^cand_/, ''))) ||
+           ((uName === 'kamla' || uName === 'कमला' || uId === 'kamla' || uId === 'कमला') && (xU === 'b' || xId === 'cand_b' || xName.includes('कमला'))) ||
+           ((xU === 'kamla' || xU === 'कमला' || xId === 'kamla' || xId === 'कमला') && (uName === 'b' || uId === 'cand_b')) ||
+           (boothExact && (xU === boothExact || xId === boothExact || xBooth === boothExact)) ||
+           (uId.startsWith('blo_') && (xBooth === uId || xU === uId || xId === uId));
+  });
   if (matched) {
     const statusUpper = String(matched.status || 'ACTIVE').toUpperCase();
     if (statusUpper === 'INACTIVE' || statusUpper === 'DISABLED' || statusUpper === 'BLOCKED') {
@@ -2284,6 +2663,9 @@ function syncCurrentUserWithConfiguredUsers() {
       sessionStorage.removeItem(sk);
       localStorage.removeItem('panchayat_user_session');
       sessionStorage.removeItem('panchayat_user_session');
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('user-logged-in');
+      }
       enforceGatekeeperState();
       const errEl = document.getElementById('gatekeeperError');
       if (errEl) {
@@ -2293,7 +2675,7 @@ function syncCurrentUserWithConfiguredUsers() {
       return;
     }
     const prevSnapshot = JSON.stringify({
-      tabs: State.currentUser.allowed_tabs,
+      tabs: Array.isArray(State.currentUser.allowed_tabs) ? [...State.currentUser.allowed_tabs] : State.currentUser.allowed_tabs,
       gp: State.currentUser.allowed_panchayats,
       wards: State.currentUser.allowed_wards,
       cp: State.currentUser.can_print,
@@ -2307,6 +2689,11 @@ function syncCurrentUserWithConfiguredUsers() {
       try { parsedTabs = JSON.parse(parsedTabs); } catch(e) { parsedTabs = parsedTabs.split(',').map(s=>s.trim()); }
     }
     if (Array.isArray(parsedTabs)) {
+      const isCand = isCandidateUser(State.currentUser);
+      const isVoter = (typeof getPortalContext === 'function' && getPortalContext() === 'voter') || (window.PORTAL_TYPE === 'voter');
+      if (isCand || isVoter) {
+        parsedTabs = parsedTabs.filter(t => t !== 'directoryTab');
+      }
       State.currentUser.allowed_tabs = parsedTabs;
     }
     if (matched.allowed_panchayats) {
@@ -2321,6 +2708,24 @@ function syncCurrentUserWithConfiguredUsers() {
     if (matched.can_search !== undefined) State.currentUser.can_search = (matched.can_search === true || matched.can_search === 1);
     if (matched.can_view !== undefined) State.currentUser.can_view = (matched.can_view === true || matched.can_view === 1);
     if (matched.candidate_mode) State.currentUser.candidate_mode = matched.candidate_mode;
+    if (matched.full_name && !matched.full_name.toLowerCase().includes('narendra')) {
+      State.currentUser.full_name = matched.full_name;
+    }
+
+    const candToSync = matched.candidate || (window.PORTAL_USERS_DATA && window.PORTAL_USERS_DATA.candidates && (window.PORTAL_USERS_DATA.candidates[uId] || (State.currentUser.username && window.PORTAL_USERS_DATA.candidates[State.currentUser.username])));
+    if (candToSync) {
+      State.currentCandidate = candToSync;
+      State.currentUser.candidate = candToSync;
+      try {
+        const uIdKey = State.currentUser.id || State.currentUser.username;
+        localStorage.setItem('candidate_profile_' + uIdKey, JSON.stringify(candToSync));
+        if (State.currentUser.username) localStorage.setItem('candidate_profile_' + State.currentUser.username, JSON.stringify(candToSync));
+      } catch(_) {}
+    }
+
+    applyGlobalElectionDateToUI();
+
+    if (typeof updateUserScopeDisplay === 'function') updateUserScopeDisplay();
 
     const newSnapshot = JSON.stringify({
       tabs: State.currentUser.allowed_tabs,
@@ -2334,8 +2739,9 @@ function syncCurrentUserWithConfiguredUsers() {
 
     if (prevSnapshot !== newSnapshot) {
       const sk = getSessionStorageKey();
-      if (localStorage.getItem(sk)) localStorage.setItem(sk, JSON.stringify(State.currentUser));
-      if (sessionStorage.getItem(sk)) sessionStorage.setItem(sk, JSON.stringify(State.currentUser));
+      localStorage.setItem(sk, JSON.stringify(State.currentUser));
+      sessionStorage.setItem(sk, JSON.stringify(State.currentUser));
+      localStorage.setItem('panchayat_user_session', JSON.stringify(State.currentUser));
       enforceGatekeeperState();
     }
   }
@@ -2343,74 +2749,129 @@ function syncCurrentUserWithConfiguredUsers() {
 
 function initSession() {
   const ctx = getPortalContext();
-  const sessionKey = getSessionStorageKey();
+  const sessionKey = `panchayat_session_${ctx}`;
 
-  if (ctx === 'blo') {
-    // BLO Portal: NEVER auto-login as SUPER_ADMIN!
-    const saved = localStorage.getItem(sessionKey) || sessionStorage.getItem(sessionKey);
-    if (saved) {
-      try {
-        const u = JSON.parse(saved);
-        if (u && (u.role === 'BLO' || u.type === 'BLO' || u.category === 'CELL' || u.role === 'प्रकोष्ठ कार्मिक' || u.role === 'CELL_MEMBER' || u.role === 'BLOCK_PRABHARI')) {
-          State.currentUser = u;
-        } else {
-          State.currentUser = null;
-          localStorage.removeItem(sessionKey);
-          sessionStorage.removeItem(sessionKey);
-        }
-      } catch (e) {
-        State.currentUser = null;
+  // Synchronously populate State.adminControlUsers from cached Google Sheet admins & candidates
+  const cachedAdminsStr = localStorage.getItem('panchayat_admins_cache');
+  if (cachedAdminsStr) {
+    try {
+      const parsedAdmins = JSON.parse(cachedAdminsStr);
+      if (Array.isArray(parsedAdmins) && parsedAdmins.length > 0) {
+        State.adminUsers = parsedAdmins;
+        State.adminControlUsers = [...parsedAdmins];
       }
-    } else {
-      State.currentUser = null;
-    }
-  } else if (ctx === 'voter') {
-    // Voter Portal: NEVER auto-login as SUPER_ADMIN!
-    const saved = localStorage.getItem(sessionKey) || sessionStorage.getItem(sessionKey);
-    if (saved) {
-      try {
-        const u = JSON.parse(saved);
-        if (u && u.role !== 'SUPER_ADMIN' && u.id !== 'admin' && u.username !== 'admin') {
-          // Auto upgrade any user session on voter portal to candidate mode
-          if (u.role === 'USER' || !u.role || u.candidate_mode === 'admin_locked' || u.role === 'PANCHAYAT_AGENT' || u.username === 'kk') {
-            u.role = 'CANDIDATE';
-            u.type = 'CANDIDATE';
-            u.category = 'CANDIDATE';
-            u.candidate_mode = 'user_edit';
-            if (!u.allowed_tabs || !Array.isArray(u.allowed_tabs) || u.allowed_tabs.length === 0) {
-              u.allowed_tabs = ['searchTab', 'alphaTab', 'bulkSlipTab', 'candidateProfileTab'];
+    } catch(e) {}
+  }
+  const cachedCandsStr = localStorage.getItem('panchayat_candidates_cache');
+  if (cachedCandsStr) {
+    try {
+      const parsedCands = JSON.parse(cachedCandsStr);
+      if (Array.isArray(parsedCands) && parsedCands.length > 0) {
+        if (!State.adminControlUsers) State.adminControlUsers = [];
+        parsedCands.forEach(c => {
+          const exIdx = State.adminControlUsers.findIndex(u => u.id === c.id || u.username === c.username || (c.id && u.id === c.id.replace('cand_', '')));
+          if (exIdx >= 0) State.adminControlUsers[exIdx] = { ...State.adminControlUsers[exIdx], ...c };
+          else State.adminControlUsers.push(c);
+        });
+      }
+    } catch(e) {}
+  }
+
+  // Set default activeTab based on portal
+  if (ctx === 'blo' || ctx === 'voter') {
+    State.activeTab = 'searchTab';
+  }
+
+  // STRICT Portal-Isolated Session: ONLY load session intended for this specific portal!
+  let saved = localStorage.getItem(sessionKey) || sessionStorage.getItem(sessionKey);
+
+  if (saved) {
+    try {
+      const u = JSON.parse(saved);
+      if (u) {
+        // Enforce role sanity per portal context
+        if (ctx === 'blo') {
+          if (u.role === 'BLO' || u.type === 'BLO' || u.category === 'CELL' || u.role === 'प्रकोष्ठ कार्मिक' || u.role === 'CELL_MEMBER' || u.role === 'BLOCK_PRABHARI') {
+            State.currentUser = u;
+            const uId = String(u.id || u.username || '').toLowerCase();
+            if ((uId.startsWith('blo_') || u.role === 'BLO') && (!Array.isArray(u.allowed_tabs) || u.allowed_tabs.length === 0)) {
+              u.allowed_tabs = ['searchTab'];
+            }
+          } else {
+            State.currentUser = null;
+          }
+        } else if (ctx === 'voter') {
+          if (u.role !== 'SUPER_ADMIN' && u.id !== 'admin' && u.username !== 'admin') {
+            // Guarantee full candidate tabs
+            if (u.role === 'USER' || !u.role || u.candidate_mode === 'admin_locked' || u.role === 'PANCHAYAT_AGENT' || u.username === 'kk') {
+              u.role = 'CANDIDATE';
+              u.type = 'CANDIDATE';
+              u.category = 'CANDIDATE';
+              u.candidate_mode = 'user_edit';
+            }
+            if (!u.allowed_tabs || !Array.isArray(u.allowed_tabs)) {
+              u.allowed_tabs = [];
+            }
+            u.allowed_tabs = u.allowed_tabs.filter(t => t !== 'directoryTab');
+            State.currentUser = u;
+          } else {
+            State.currentUser = null;
+          }
+        } else {
+          // Master Portal (/pan/ or ?portal=master)
+          State.currentUser = u;
+        }
+
+        if (State.currentUser) {
+          // Restore candidate profile if user is candidate
+          const isCand = isCandidateUser(State.currentUser);
+          if (isCand) {
+            const cand = getActiveCandidate();
+            if (cand) {
+              State.currentCandidate = cand;
+              State.currentUser.candidate = cand;
             }
           }
-          State.currentUser = u;
-        } else {
-          State.currentUser = null;
-          localStorage.removeItem(sessionKey);
-          sessionStorage.removeItem(sessionKey);
+          // Flag HTML to prevent login screen bounce
+          if (typeof document !== 'undefined') {
+            document.documentElement.classList.add('user-logged-in');
+          }
         }
-      } catch (e) {
-        State.currentUser = null;
       }
-    } else {
+    } catch(e) {
       State.currentUser = null;
     }
   } else {
-    // Master Portal (/pan/ or ?portal=master)
-    const saved = localStorage.getItem(sessionKey) || localStorage.getItem('panchayat_user_session') || sessionStorage.getItem(sessionKey);
-    if (saved) {
-      try {
-        State.currentUser = JSON.parse(saved);
-      } catch (e) {
-        State.currentUser = null;
-      }
-    }
+    State.currentUser = null;
   }
 
   // Populate dropdowns and trigger background sync
   configureLoginUiForPortal();
   populateLoginUserDropdown();
-  syncLatestActiveUsersFromAppsScript();
-  syncCurrentUserWithConfiguredUsers();
-  enforceGatekeeperState();
+  syncCurrentUserWithConfiguredUsers(); // Sync synchronously with cached admins BEFORE rendering!
+  applyGlobalElectionDateToUI();
+  enforceGatekeeperState(); // Render with verified permissions
+  syncLatestActiveUsersFromAppsScript(); // Background fetch updates if anything changed in Google Sheet
+}
+
+function isCandidateUser(u) {
+  if (!u) return false;
+  const role = String(u.role || '').toUpperCase();
+  // Administrative roles are NEVER candidate users
+  if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'INCHARGE' || role === 'VYAVASTHAPAK' || role === 'BLOCK_PRABHARI') return false;
+  // BLO and Cell personnel are election staff controlled by Superadmin - NEVER candidate users
+  if (role === 'BLO' || role.includes('बी.एल.ओ') || role.includes('BLO') || String(u.id || '').toLowerCase().startsWith('blo_')) return false;
+  if (role === 'CELL_MEMBER' || role === 'CELL' || role.includes('प्रकोष्ठ') || String(u.id || '').toLowerCase().startsWith('cell_')) return false;
+
+  const uId = String(u.id || u.username || '').toLowerCase();
+  if (uId.startsWith('cand_') || uId === 'sarpanch') return true;
+  if (u.role === 'CANDIDATE' || u.role === 'प्रत्याशी' || u.type === 'CANDIDATE' || u.category === 'CANDIDATE') return true;
+  
+  // On voter portal ONLY, standard users act as candidate
+  if (typeof getPortalContext === 'function' && getPortalContext() === 'voter') {
+    return true;
+  }
+  return false;
 }
 
 function enforceGatekeeperState() {
@@ -2444,13 +2905,7 @@ function enforceGatekeeperState() {
   }
 
   // Candidate Detection
-  const isCandidateUser = (u.role === 'CANDIDATE' || u.role === 'प्रत्याशी' || u.type === 'CANDIDATE' || u.category === 'CANDIDATE' || (u.id && String(u.id).startsWith('cand_')) || u.candidate_mode === 'user_edit' || u.candidate_mode === 'active' || u.candidate_mode === true);
-
-  // Candidate Profile Nav Tab
-  const candidateNavTab = document.getElementById('candidateNavTab');
-  if (candidateNavTab) {
-    candidateNavTab.style.display = (isSuperAdmin || isCandidateUser) ? 'flex' : 'none';
-  }
+  const isCandUser = isCandidateUser(u);
 
   // Enforce Allowed Tabs (Super Admin configuration has priority)
   let allowedTabs = ['searchTab'];
@@ -2460,9 +2915,9 @@ function enforceGatekeeperState() {
   }
 
   if (isSuperAdmin) {
-    allowedTabs = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'directoryTab', 'candidateProfileTab', 'adminControlTab', 'settingsTab'];
-  } else if (Array.isArray(userConfiguredTabs) && userConfiguredTabs.length > 0) {
-    // If Admin explicitly assigned custom tabs to this user, ALWAYS RESPECT IT!
+    allowedTabs = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'directoryTab', 'adminControlTab', 'settingsTab'];
+  } else if (Array.isArray(userConfiguredTabs)) {
+    // If Admin explicitly assigned custom tabs to this user (even if empty []), ALWAYS RESPECT IT!
     allowedTabs = userConfiguredTabs;
   } else if (isIncharge) {
     // Incharge default view rights across all normal tabs for all 30 GPs (NO EDIT)
@@ -2470,7 +2925,7 @@ function enforceGatekeeperState() {
   } else if (isVyavasthapak) {
     // Vyavasthapak default view, download & bulk/single slip print rights for all 30 GPs
     allowedTabs = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'directoryTab'];
-  } else if (isCandidateUser) {
+  } else if (isCandUser) {
     allowedTabs = ['searchTab', 'alphaTab', 'bulkSlipTab', 'candidateProfileTab'];
   } else if (u.role === 'BLO') {
     allowedTabs = ['searchTab'];
@@ -2478,15 +2933,61 @@ function enforceGatekeeperState() {
     allowedTabs = ['searchTab', 'directoryTab'];
   }
 
-  // Ensure candidate profile tab is visible if allowed
-  if (candidateNavTab) {
-    candidateNavTab.style.display = (isSuperAdmin || (isCandidateUser && allowedTabs.includes('candidateProfileTab'))) ? 'flex' : 'none';
+  // STRICT SECURITY RULE:
+  // 1. On voter-portal repo or for candidate users, Ward Directory is strictly prohibited.
+  // 2. On blo-portal and pan repos, Super Admin has full control: if Super Admin grants directoryTab in allowed_tabs, it MUST BE VISIBLE and active!
+  const isVoterContext = (window.PORTAL_TYPE === 'voter') || 
+                         (window.location && window.location.href && window.location.href.toLowerCase().includes('/voter-portal')) ||
+                         (typeof getPortalContext === 'function' && getPortalContext() === 'voter');
+  if (isCandUser || isVoterContext) {
+    // Candidates & Voters NEVER see Dashboard, Directory, Admin Control, or Settings
+    allowedTabs = allowedTabs.filter(t => t !== 'directoryTab' && t !== 'dashboardTab' && t !== 'adminControlTab' && t !== 'settingsTab');
+    document.querySelectorAll('.nav-tab[data-tab="directoryTab"], .bottom-nav-item[data-tab="directoryTab"]').forEach(el => {
+      el.style.display = 'none';
+    });
+    const dirSec = document.getElementById('directoryTab');
+    if (dirSec) dirSec.style.display = 'none';
+    if (State.activeTab === 'directoryTab') {
+      State.activeTab = 'searchTab';
+      switchTab('searchTab');
+    }
+  } else {
+    // When allowed on blo-portal or pan, ensure directory tab section inline style is cleared so it displays cleanly!
+    const dirSec = document.getElementById('directoryTab');
+    if (dirSec && allowedTabs.includes('directoryTab')) {
+      dirSec.style.display = '';
+    }
   }
 
+  // Real-time dynamic CSS filter update (replaces stale stylesheet from initial page load)
+  const allMasterTabIds = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'directoryTab', 'candidateProfileTab', 'adminControlTab', 'settingsTab'];
+  let liveFilterCss = '';
+  allMasterTabIds.forEach(t => {
+    if (!isSuperAdmin && !allowedTabs.includes(t)) {
+      liveFilterCss += `.nav-tab[data-tab="${t}"], .bottom-nav-item[data-tab="${t}"], #${t} { display: none !important; } `;
+    }
+  });
+  let liveFilterEl = document.getElementById('instant-allowed-tabs-filter');
+  if (!liveFilterEl) {
+    liveFilterEl = document.createElement('style');
+    liveFilterEl.id = 'instant-allowed-tabs-filter';
+    document.head.appendChild(liveFilterEl);
+  }
+  liveFilterEl.textContent = liveFilterCss;
+
+  // Candidate Profile Nav Tab Visibility
+  const candidateNavTab = document.getElementById('candidateNavTab');
+  if (candidateNavTab) {
+    candidateNavTab.style.display = (isCandUser && allowedTabs.includes('candidateProfileTab')) ? 'flex' : 'none';
+  }
+
+  // Enforce Navigation Tab Buttons
   document.querySelectorAll('.nav-tab').forEach(tab => {
     const tabId = tab.getAttribute('data-tab');
     if (tabId === 'adminControlTab' || tabId === 'settingsTab') {
       tab.style.display = isSuperAdmin ? 'flex' : 'none';
+    } else if (tabId === 'candidateProfileTab') {
+      tab.style.display = (isSuperAdmin || (isCandUser && allowedTabs.includes('candidateProfileTab'))) ? 'flex' : 'none';
     } else {
       const isAllowed = isSuperAdmin || allowedTabs.includes(tabId);
       tab.style.display = isAllowed ? 'flex' : 'none';
@@ -2496,22 +2997,99 @@ function enforceGatekeeperState() {
   // Mobile Bottom Nav items filtering
   document.querySelectorAll('.bottom-nav-item').forEach(btn => {
     const tabId = btn.getAttribute('data-tab');
-    const isAllowed = isSuperAdmin || allowedTabs.includes(tabId);
-    btn.style.display = isAllowed ? 'flex' : 'none';
+    if (tabId === 'candidateProfileTab') {
+      btn.style.display = (isSuperAdmin || (isCandUser && allowedTabs.includes('candidateProfileTab'))) ? 'flex' : 'none';
+    } else {
+      const isAllowed = isSuperAdmin || allowedTabs.includes(tabId);
+      btn.style.display = isAllowed ? 'flex' : 'none';
+    }
   });
 
-  // If current tab is not allowed, switch to first allowed tab
-  if (!isSuperAdmin && !allowedTabs.includes(State.activeTab)) {
-    const firstAllowed = allowedTabs[0] || 'searchTab';
-    switchTab(firstAllowed);
+  // Explicitly hide disabled tab pane sections
+  allMasterTabIds.forEach(t => {
+    if (!isSuperAdmin && !allowedTabs.includes(t)) {
+      const p = document.getElementById(t);
+      if (p) {
+        p.style.display = 'none';
+        p.classList.remove('active');
+      }
+    }
+  });
+
+  // Handle Zero Allowed Tabs: Clean lock screen with ONLY 1 message!
+  const noAccessEl = document.getElementById('noPermissionsNotice');
+  const scopeBanner = document.getElementById('userScopeBanner');
+
+  if (!isSuperAdmin && (!allowedTabs || allowedTabs.length === 0)) {
+    // 1. Hide ALL tab panes so no search bar, filters, or voter details show
+    document.querySelectorAll('.tab-pane').forEach(pane => {
+      pane.style.display = 'none';
+      pane.classList.remove('active');
+    });
+
+    // 2. Hide ALL navigation tab buttons
+    document.querySelectorAll('.nav-tab').forEach(t => t.style.display = 'none');
+    document.querySelectorAll('.bottom-nav-item').forEach(b => b.style.display = 'none');
+
+    // 3. Hide user scope banner so no confusing extra details appear
+    if (scopeBanner) scopeBanner.style.display = 'none';
+
+    // 4. Show ONLY the single, clean, centered permission notice (Option 3: Private Portal Language)
+    const noticeHtml = `
+      <div style="width: 72px; height: 72px; margin: 0 auto 18px auto; background: #fee2e2; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 36px;">🔒</div>
+      <h2 style="color: #991b1b; margin: 0 0 10px 0; font-size: 22px; font-weight: 800; font-family: sans-serif;">अनुमति प्रतिबंधित</h2>
+      <p style="color: #374151; font-size: 16px; font-weight: 600; line-height: 1.5; margin: 0 0 8px 0;">
+        आपके खाते की सेवाएँ वर्तमान में बंद हैं।
+      </p>
+      <p style="color: #6b7280; font-size: 14px; margin: 0 0 24px 0;">
+        कृपया एडमिन से संपर्क करें।
+      </p>
+      <button onclick="logoutUser()" class="btn btn-primary" style="padding: 10px 28px; font-size: 15px; font-weight: 700; border-radius: 8px; background: #dc2626; border: none; color: white; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(220, 38, 38, 0.3);">
+        🚪 लॉगआउट करें (Logout)
+      </button>
+    `;
+
+    if (noAccessEl) {
+      noAccessEl.innerHTML = noticeHtml;
+      noAccessEl.style.display = 'block';
+    } else {
+      const div = document.createElement('div');
+      div.id = 'noPermissionsNotice';
+      div.style.cssText = 'max-width: 540px; margin: 60px auto 40px auto; padding: 42px 28px; text-align: center; background: #ffffff; border-radius: 18px; border: 2px dashed #f87171; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08);';
+      div.innerHTML = noticeHtml;
+      const container = document.querySelector('main.app-content') || document.querySelector('.main-content') || document.getElementById('mainPortalApp');
+      if (container) container.appendChild(div);
+    }
+  } else {
+    // Normal state when tabs are allowed
+    if (noAccessEl) noAccessEl.style.display = 'none';
+    if (scopeBanner) scopeBanner.style.display = '';
+
+    if (!isSuperAdmin && !allowedTabs.includes(State.activeTab)) {
+      if (allowedTabs.length > 0) {
+        switchTab(allowedTabs[0], false);
+      }
+    } else if (State.activeTab && document.getElementById(State.activeTab)) {
+      document.querySelectorAll('.nav-tab').forEach(t => {
+        t.classList.toggle('active', t.getAttribute('data-tab') === State.activeTab);
+      });
+      document.querySelectorAll('.bottom-nav-item').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-tab') === State.activeTab);
+      });
+      document.querySelectorAll('.tab-pane').forEach(p => {
+        const isActive = (p.id === State.activeTab);
+        p.classList.toggle('active', isActive);
+        p.style.display = isActive ? 'block' : 'none';
+      });
+    }
   }
 
   // Candidate Bulk Slip options on voter-portal: keep 9, 21, and Thermal
   // On other portals (PAN, BLO): KEEP ALL LAYOUTS (12, 15, 18, 20, 21, 9, 10, Thermal) VISIBLE AND SELECTABLE!
-  const isVoterRepo = (window.PORTAL_TYPE === 'voter' || window.PORTAL_TYPE === 'voterslip') || 
-                      (window.location && window.location.href && (window.location.href.toLowerCase().includes('/voter-portal') || window.location.href.toLowerCase().includes('/slip')));
+  const isVoterRepo = (window.PORTAL_TYPE === 'voter') || 
+                      (window.location && window.location.href && window.location.href.toLowerCase().includes('/voter-portal'));
 
-  if (isVoterRepo && isCandidateUser) {
+  if (isVoterRepo && isCandUser) {
     ['layoutCard10', 'layoutCard12', 'layoutCard15', 'layoutCard18', 'layoutCard20'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.style.display = 'none';
@@ -2530,10 +3108,8 @@ function enforceGatekeeperState() {
     });
   }
 
-  // Load candidate profile if available from user configuration or localStorage
-  if (u.candidate) {
-    State.currentCandidate = u.candidate;
-  } else if (!State.currentCandidate) {
+  // Load candidate profile if not loaded
+  if (!State.currentCandidate) {
     const cached = localStorage.getItem('candidate_profile_' + (u.id || u.username));
     if (cached) {
       try { State.currentCandidate = JSON.parse(cached); } catch(e) {}
@@ -2571,9 +3147,28 @@ function updateUserScopeDisplay() {
   const gpName = document.getElementById('bannerGpName');
   const wardScope = document.getElementById('bannerWardScope');
   const sessionStatus = document.getElementById('sessionStatusText');
+  const bannerUserLabel = document.getElementById('bannerUserLabel');
+
+  const isCand = isCandidateUser(u);
+
+  if (bannerUserLabel) {
+    if (isCand) {
+      bannerUserLabel.textContent = 'प्रत्याशी:';
+    } else if (u.role === 'BLO') {
+      bannerUserLabel.textContent = 'बी.एल.ओ.:';
+    } else if (u.role === 'SUPER_ADMIN') {
+      bannerUserLabel.textContent = 'व्यवस्थापक:';
+    } else {
+      bannerUserLabel.textContent = 'उपयोगकर्ता:';
+    }
+  }
 
   if (roleBadge) {
-    if (u.role === 'SUPER_ADMIN') {
+    if (isCand) {
+      roleBadge.textContent = '🚩 अधिकृत प्रत्याशी सत्र (Candidate)';
+      roleBadge.style.background = '#d97706';
+      roleBadge.style.color = '#ffffff';
+    } else if (u.role === 'SUPER_ADMIN') {
       roleBadge.textContent = '👑 मुख्य व्यवस्थापक (Super Admin)';
       roleBadge.style.background = '#b45309';
       roleBadge.style.color = '#ffffff';
@@ -2607,7 +3202,15 @@ function updateUserScopeDisplay() {
   if (userName) userName.textContent = u.full_name || u.username;
   if (gpName) gpName.textContent = u.panchayat || (u.allowed_panchayats === 'ALL' ? 'समस्त 30 ग्राम पंचायतें' : u.allowed_panchayats);
   if (wardScope) wardScope.textContent = u.allowed_wards === 'ALL' ? 'समस्त वार्ड' : `वार्ड ${u.allowed_wards}`;
-  if (sessionStatus) sessionStatus.textContent = `${u.full_name || u.username} (${u.role === 'SUPER_ADMIN' ? 'सुपर एडमिन' : (u.role === 'INCHARGE' ? 'ब्लॉक इनचार्ज' : (u.role === 'VYAVASTHAPAK' ? 'व्यवस्थापक' : 'अधिकृत सत्र'))})`;
+  if (sessionStatus) {
+    if (u.role === 'SUPER_ADMIN') sessionStatus.textContent = `${u.full_name || u.username} (सुपर एडमिन)`;
+    else if (u.role === 'INCHARGE') sessionStatus.textContent = `${u.full_name || u.username} (ब्लॉक इनचार्ज)`;
+    else if (u.role === 'VYAVASTHAPAK') sessionStatus.textContent = `${u.full_name || u.username} (व्यवस्थापक)`;
+    else if (u.role === 'BLOCK_PRABHARI') sessionStatus.textContent = `${u.full_name || u.username} (ब्लॉक प्रभारी)`;
+    else if (isCand) sessionStatus.textContent = `${u.full_name || u.username} (प्रत्याशी)`;
+    else if (u.role === 'BLO') sessionStatus.textContent = `${u.full_name || u.username} (BLO)`;
+    else sessionStatus.textContent = `${u.full_name || u.username} (अधिकृत सत्र)`;
+  }
 
   // Admin users box visibility
   const adminBox = document.getElementById('adminUserManagementBox');
@@ -2620,7 +3223,15 @@ function updateUserScopeDisplay() {
 // ==========================================================================
 // Tab Navigation (Desktop & Mobile)
 // ==========================================================================
-function switchTab(tabId) {
+function switchTab(tabId, shouldScroll = true) {
+  const curU = State.currentUser;
+  const isCand = isCandidateUser(curU);
+  const isVoter = (window.PORTAL_TYPE === 'voter') || 
+                  (window.location && window.location.href && window.location.href.toLowerCase().includes('/voter-portal')) ||
+                  (typeof getPortalContext === 'function' && getPortalContext() === 'voter');
+  if (tabId === 'directoryTab' && (isCand || isVoter)) {
+    tabId = 'searchTab';
+  }
   State.activeTab = tabId;
   document.querySelectorAll('.nav-tab').forEach(tab => {
     tab.classList.toggle('active', tab.getAttribute('data-tab') === tabId);
@@ -2629,17 +3240,28 @@ function switchTab(tabId) {
     btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
   });
   document.querySelectorAll('.tab-pane').forEach(pane => {
-    pane.classList.toggle('active', pane.id === tabId);
+    const isActive = (pane.id === tabId);
+    pane.classList.toggle('active', isActive);
+    pane.style.display = isActive ? 'block' : 'none';
   });
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (shouldScroll) {
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(_) {}
+  }
 
-  if (tabId === 'dashboardTab') renderDashboard();
-  if (tabId === 'directoryTab') initDirectoryTab();
-  if (tabId === 'alphaTab') renderAlphabeticalList();
-  if (tabId === 'bulkSlipTab') updateBulkGenerator();
-  if (tabId === 'withPicSlipTab') initWithPicTab();
-  if (tabId === 'candidateProfileTab') initCandidateProfileTab();
-  if (tabId === 'adminControlTab') initAdminControlTab();
+  try {
+    if (tabId === 'dashboardTab' && typeof renderDashboard === 'function') renderDashboard();
+    if (tabId === 'directoryTab' && typeof initDirectoryTab === 'function') initDirectoryTab();
+    if (tabId === 'alphaTab' && typeof renderAlphabeticalList === 'function') renderAlphabeticalList();
+    if (tabId === 'bulkSlipTab') {
+      if (typeof onBulkGpChanged === 'function') onBulkGpChanged();
+      else if (typeof updateBulkGenerator === 'function') updateBulkGenerator();
+    }
+    if (tabId === 'withPicSlipTab' && typeof initWithPicTab === 'function') initWithPicTab();
+    if (tabId === 'candidateProfileTab' && typeof initCandidateProfileTab === 'function') initCandidateProfileTab();
+    if (tabId === 'adminControlTab' && typeof initAdminControlTab === 'function') initAdminControlTab();
+  } catch(err) {
+    console.warn('[SWITCH-TAB] Error rendering tab ' + tabId + ':', err);
+  }
 }
 
 // ==========================================================================
@@ -2690,6 +3312,12 @@ function getAllowedWardsList(gpCode) {
   if (isPrivileged) return 'ALL';
 
   const ov = (typeof getUserOverrides === 'function') ? (getUserOverrides()[u.id || u.username] || {}) : {};
+  const candPost = String(State.currentCandidate?.post || u.post || u.candidate?.post || '').trim();
+  const isPsOrZp = candPost.includes('पंचायत समिति') || candPost.includes('जिला परिषद');
+  if (isPsOrZp) {
+    // PS & ZP members can search and view all GP wards in their assigned Panchayats
+    return 'ALL';
+  }
   const effWards = ov.allowed_wards || u.allowed_wards || u.assigned_wards || u.wards || u.ward || 'ALL';
 
   if (!effWards || effWards === 'ALL' || effWards === 'समस्त' || effWards === 'समस्त वार्ड') {
@@ -3436,116 +4064,197 @@ function shareVoterSlipWhatsAppByIndex(index) {
 // ==========================================================================
 // OFFICIAL VOTER SLIP MODAL (Candidate vs Official Determination)
 // ==========================================================================
+// Helper to find the matching candidate for any voter across the 30 Gram Panchayats
+function findCandidateForVoter(voter) {
+  if (!voter) return null;
+  // If current logged-in user is a candidate, prioritize their configured candidate profile
+  if (State.currentCandidate && State.currentUser && (State.currentUser.role === 'CANDIDATE' || String(State.currentUser.id).startsWith('cand_') || State.currentUser.candidate_mode === 'user_edit' || State.currentUser.candidate_mode === 'active')) {
+    return State.currentCandidate;
+  }
+  const voterGp = String(voter.gram_panchayat || voter.revenue_village || '').trim().toLowerCase();
+  const voterGpCode = String(voter.panchayat_code || '').trim().toLowerCase();
+  const voterWard = String(voter.ward_no || '').trim();
+
+  // 1. Check if State.currentCandidate matches this voter
+  if (State.currentCandidate && State.currentCandidate.panchayat) {
+    const candGp = String(State.currentCandidate.panchayat).trim().toLowerCase();
+    if (candGp === voterGp || candGp === voterGpCode) {
+      return State.currentCandidate;
+    }
+  }
+
+  // 2. Search in window.PORTAL_USERS_DATA.candidates
+  const candidatesObj = (window.PORTAL_USERS_DATA && window.PORTAL_USERS_DATA.candidates) || {};
+  for (const cid in candidatesObj) {
+    const c = candidatesObj[cid];
+    if (!c || !c.panchayat) continue;
+    const cGp = String(c.panchayat).trim().toLowerCase();
+    if (cGp === voterGp || cGp === voterGpCode) {
+      if (c.post === 'वार्ड पंच' && c.ward && String(c.ward).trim() !== voterWard) {
+        continue;
+      }
+      return c;
+    }
+  }
+
+  // 3. Search in State.adminControlUsers
+  const users = State.adminControlUsers || [];
+  for (const u of users) {
+    if (u.candidate && u.candidate.panchayat) {
+      const cGp = String(u.candidate.panchayat).trim().toLowerCase();
+      if (cGp === voterGp || cGp === voterGpCode) {
+        return u.candidate;
+      }
+    }
+  }
+
+  // 4. Only return current candidate if their GP actually matches voter GP
+  if (State.currentCandidate && State.currentCandidate.panchayat) {
+    const candGp = String(State.currentCandidate.panchayat).trim().toLowerCase();
+    if (candGp === voterGp || candGp === voterGpCode) return State.currentCandidate;
+  }
+
+  // 5. Default candidate for this GP
+  return {
+    candidate_name: 'प्रत्याशी ' + (voter.gram_panchayat || ''),
+    post: 'सरपंच',
+    panchayat: voter.gram_panchayat,
+    ward: voter.ward_no,
+    election_date: electionDate,
+    election_time: 'प्रातः 7:00 बजे से सायं 6:00 बजे तक',
+    symbol_name: 'उगता सूरज',
+    symbol_icon: 'sun',
+    slogan: '।। समस्त ग्रामवासियों से विनम्र अपील ।।\nअपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।',
+    photo_url: 'https://api.dicebear.com/7.x/identicon/svg?seed=' + encodeURIComponent(voter.gram_panchayat || 'candidate'),
+    show_banner_on_slip: true
+  };
+}
+
 function isCandidateSlipAllowedForVoter(voter) {
-  // STRICT REQUIREMENT: Candidate branding is strictly limited to voter-portal repo!
-  // On all other repositories (PAN / Master Admin, BLO Portal), candidate details must NEVER appear.
-  const isVoterRepo = (window.PORTAL_TYPE === 'voter' || window.PORTAL_TYPE === 'voterslip') || 
-                      (window.location && window.location.href && (window.location.href.toLowerCase().includes('/voter-portal') || window.location.href.toLowerCase().includes('/slip')));
-  if (!isVoterRepo) {
-    return false;
-  }
-
-  if (!State.currentUser || !voter) return false;
+  if (!voter) return false;
   const u = State.currentUser;
-  const isCandidateRole = (u.role === 'CANDIDATE' || u.type === 'CANDIDATE' || (u.id && String(u.id).startsWith('cand_')) || u.candidate_mode === 'user_edit' || u.candidate_mode === 'active');
-  if (!isCandidateRole) return false;
+  if (!u) return false;
 
-  let cand = u.candidate || State.currentCandidate;
-  if (!cand) {
-    try {
-      cand = JSON.parse(localStorage.getItem('candidate_profile_' + (u.id || u.username)) || 'null');
-      if (cand) State.currentCandidate = cand;
-    } catch(e) {}
+  const isSuperAdmin = (u.role === 'SUPER_ADMIN' || u.role === 'admin' || String(u.id || u.username || '').toLowerCase() === 'admin');
+  if (isSuperAdmin) {
+    // Superadmin has full control: allowed if in candidate view mode
+    return State.slipModalViewMode === 'candidate';
   }
-  if (!cand) {
-    cand = {
-      user_id: u.id || u.username,
-      candidate_name: u.full_name || u.username,
-      panchayat: u.panchayat || u.allowed_panchayats || '',
-      ward: u.allowed_wards !== 'ALL' ? u.allowed_wards : '',
-      post: u.allowed_wards !== 'ALL' ? 'वार्ड पंच' : 'सरपंच',
-      symbol_name: 'उगता सूरज',
-      symbol_icon: 'sun',
-      show_banner_on_slip: true
-    };
-    State.currentCandidate = cand;
-  }
+
+  const isCandidateRole = (u.role === 'CANDIDATE' || u.type === 'CANDIDATE' || String(u.id || '').startsWith('cand_') || u.candidate_mode === 'user_edit' || u.candidate_mode === 'active');
+  if (!isCandidateRole) return false;
 
   // Check GP match using getAllowedGps()
   const allowed = getAllowedGps();
   if (allowed.length === 0 || allowed.some(p => p.code === 'ALL')) return true;
 
-  const voterGpCode = String(voter.panchayat_code || '').trim();
-  const voterGpHi = String(voter.gram_panchayat || '').trim();
-  const voterGpEn = String(voter.panchayat_en || '').trim();
+  const voterGpCode = String(voter.panchayat_code || '').trim().toLowerCase();
+  const voterGpHi = String(voter.gram_panchayat || '').trim().toLowerCase();
+  const voterGpEn = String(voter.panchayat_en || '').trim().toLowerCase();
 
-  const matchGp = allowed.some(p => p.code === voterGpCode || p.name_hi === voterGpHi || (p.name_en && p.name_en.toLowerCase() === voterGpEn.toLowerCase()));
+  const matchGp = allowed.some(p => {
+    const code = String(p.code || '').trim().toLowerCase();
+    const hi = String(p.name_hi || p.name || '').trim().toLowerCase();
+    const en = String(p.name_en || '').trim().toLowerCase();
+    return code === voterGpCode || hi === voterGpHi || (en && en === voterGpEn);
+  });
   if (!matchGp) return false;
 
-  // Check Ward match if candidate is assigned specific ward(s)
-  const allowedWards = getAllowedWardsList(voterGpCode);
-  if (allowedWards !== 'ALL' && Array.isArray(allowedWards) && allowedWards.length > 0) {
-    if (!allowedWards.includes(String(voter.ward_no))) return false;
+  // Check Ward match:
+  // For Panchayat Samiti and Zila Parishad members, they represent entire Panchayats (all GP wards)
+  const candPost = String(State.currentCandidate?.post || u.post || u.candidate?.post || '').trim();
+  const isPsOrZp = candPost.includes('पंचायत समिति') || candPost.includes('जिला परिषद');
+
+  if (!isPsOrZp) {
+    // Ward Panch: Strictly restricted to their single allotted GP ward
+    const allowedWards = getAllowedWardsList(voterGpCode);
+    if (allowedWards !== 'ALL' && Array.isArray(allowedWards) && allowedWards.length > 0) {
+      if (!allowedWards.includes(String(voter.ward_no))) return false;
+    }
   }
 
   return true;
+}
+
+function setSlipModalViewMode(mode) {
+  State.slipModalViewMode = mode;
+  const btnOff = document.getElementById('btnSlipModeOfficial');
+  const btnCand = document.getElementById('btnSlipModeCandidate');
+  if (btnOff) btnOff.classList.toggle('active', mode === 'official');
+  if (btnCand) btnCand.classList.toggle('active', mode === 'candidate');
+
+  const pickerWrap = document.getElementById('superadminCandidatePickerWrap');
+  const u = State.currentUser;
+  const isSuperAdmin = u && (u.role === 'SUPER_ADMIN' || u.role === 'admin' || String(u.id || u.username || '').toLowerCase() === 'admin');
+  if (pickerWrap) {
+    pickerWrap.style.display = (isSuperAdmin && mode === 'candidate') ? 'flex' : 'none';
+  }
+
+  if (State.currentSlipVoter) {
+    renderModalCandidateSlip(State.currentSlipVoter);
+  }
+}
+
+function onSuperadminCandidatePickerChanged(candidateId) {
+  State.superadminSelectedCandidateId = candidateId;
+  if (State.currentSlipVoter) {
+    renderModalCandidateSlip(State.currentSlipVoter);
+  }
 }
 
 function openVoterSlipModal(voter) {
   if (!voter) return;
   State.currentSlipVoter = voter;
 
-  const setTxt = (id, val) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = (val !== undefined && val !== null) ? val : '';
-  };
+  const u = State.currentUser;
+  const isCandidate = u && (u.role === 'CANDIDATE' || u.type === 'CANDIDATE' || String(u.id || '').startsWith('cand_') || u.candidate_mode === 'user_edit' || u.candidate_mode === 'active');
 
-  setTxt('slipGpName', voter.gram_panchayat);
-  setTxt('slipGpCode', voter.panchayat_code);
-  setTxt('slipWardNo', String(voter.ward_no || '1').padStart(2, '0'));
-  setTxt('slipSerialNo', voter.serial_no || '01');
-  setTxt('slipVoterName', voter.voter_name);
-  
-  // Clean English Name without empty ()
-  const enWrapper = document.getElementById('slipVoterNameEnWrapper');
-  const enSpan = document.getElementById('slipVoterNameEn');
-  if (voter.voter_name_en && voter.voter_name_en.trim()) {
-    if (enSpan) enSpan.textContent = voter.voter_name_en.trim();
-    if (enWrapper) enWrapper.style.display = 'inline';
-  } else {
-    if (enSpan) enSpan.textContent = '';
-    if (enWrapper) enWrapper.style.display = 'none';
+  // Super Admin & non-candidates: toolbar is strictly hidden, print system is 100% original official slip
+  const toolbar = document.getElementById('voterSlipModalToolbar');
+  if (toolbar) {
+    toolbar.style.display = isCandidate ? 'flex' : 'none';
   }
 
-  // On-screen photo in modal
-  const modalPhoto = document.getElementById('slipModalPhotoImg');
-  if (modalPhoto) {
-    modalPhoto.src = getVoterPhotoUrl(voter);
-    modalPhoto.style.display = 'block';
+  const pickerWrap = document.getElementById('superadminCandidatePickerWrap');
+  if (pickerWrap) pickerWrap.style.display = 'none';
+
+  if (isCandidate) {
+    State.slipModalViewMode = State.slipModalViewMode || 'candidate';
+    const btnOff = document.getElementById('btnSlipModeOfficial');
+    const btnCand = document.getElementById('btnSlipModeCandidate');
+    if (btnOff) btnOff.classList.toggle('active', State.slipModalViewMode === 'official');
+    if (btnCand) btnCand.classList.toggle('active', State.slipModalViewMode === 'candidate');
   }
-  
-  const relLabel = voter.relative_relation || 'पिता/पति';
-  setTxt('slipRelationLabel', `${relLabel} का नाम`);
-  setTxt('slipRelativeName', voter.relative_name || '-');
 
-  const isFemale = voter.gender === 'F' || voter.gender === 'महिला';
-  setTxt('slipGender', isFemale ? 'महिला (Female)' : 'पुरुष (Male)');
-  setTxt('slipAge', voter.age ? `${voter.age} वर्ष` : '-');
-  setTxt('slipHouseNo', voter.house_no || '-');
-  setTxt('slipEpicNo', voter.epic_no || 'N/A');
-  setTxt('slipVillageName', voter.revenue_village || voter.gram_panchayat);
-
-  const bInfo = getBoothForVoter(voter);
-  const boothNoVal = bInfo ? bInfo.booth_no : (voter.polling_station_no || '01');
-  const boothNameVal = bInfo ? bInfo.name : (voter.polling_station_name || `राजकीय उच्च माध्यमिक विद्यालय कमरा नं.-01 ${voter.gram_panchayat}`);
-  setTxt('slipBoothNo', String(boothNoVal).padStart(2, '0'));
-  setTxt('slipBoothName', boothNameVal);
-
-  const qrString = `SEC-RJ-${voter.panchayat_code}-W${String(voter.ward_no).padStart(2, '0')}-S${String(voter.serial_no).padStart(3, '0')}`;
-  setTxt('slipQrCodeTxt', qrString);
-
-  // Render modal slip (candidate slip only if logged in as candidate for allotted GP, else clean official slip)
+  // Render modal slip content
   renderModalCandidateSlip(voter);
+
+  // Dynamic UI enforcement: show/hide Print and Download action buttons in modal
+  const hasPrint = canUserPrint();
+  const hasDownload = canUserDownload();
+
+  const btnThermal = document.getElementById('btnSlipThermal') || document.querySelector('#voterSlipModal button[onclick*="printThermal"]');
+  const btnA4 = document.getElementById('btnSlipA4') || document.querySelector('#voterSlipModal button[onclick*="printVoterSlip"]:not([title*="PDF"])');
+  const btnPdf = document.getElementById('btnSlipPdf') || document.querySelector('#voterSlipModal button[onclick*="download"], #voterSlipModal button[title*="PDF"]');
+
+  if (btnThermal) btnThermal.style.display = hasPrint ? 'inline-flex' : 'none';
+  if (btnA4) btnA4.style.display = hasPrint ? 'inline-flex' : 'none';
+  if (btnPdf) btnPdf.style.display = hasDownload ? 'inline-flex' : 'none';
+
+  let permNotice = document.getElementById('modalPermNotice');
+  if (!hasPrint && !hasDownload) {
+    if (!permNotice) {
+      permNotice = document.createElement('div');
+      permNotice.id = 'modalPermNotice';
+      permNotice.style.cssText = 'color:#b91c1c; font-size:0.8rem; font-weight:700; background:#fef2f2; padding:6px 12px; border-radius:6px; border:1px solid #fecaca; margin-right:auto; display:flex; align-items:center; gap:6px;';
+      permNotice.innerHTML = '🔒 प्रिंट व डाउनलोड अनुमति व्यवस्थापक द्वारा बंद है';
+      const mFooter = document.querySelector('#voterSlipModal .modal-footer');
+      if (mFooter) mFooter.insertBefore(permNotice, mFooter.firstChild);
+    }
+    permNotice.style.display = 'flex';
+  } else if (permNotice) {
+    permNotice.style.display = 'none';
+  }
 
   const modal = document.getElementById('voterSlipModal');
   if (modal) modal.style.display = 'flex';
@@ -3555,25 +4264,67 @@ function renderModalCandidateSlip(voter) {
   const container = document.getElementById('printableVoterSlip');
   if (!container) return;
 
-  const canUseCandidateSlip = isCandidateSlipAllowedForVoter(voter);
-  const cand = State.currentCandidate;
+  const u = State.currentUser;
+  const isCandidate = u && (u.role === 'CANDIDATE' || u.type === 'CANDIDATE' || String(u.id || '').startsWith('cand_') || u.candidate_mode === 'user_edit' || u.candidate_mode === 'active');
 
-  if (canUseCandidateSlip && cand && cand.candidate_name) {
-    const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
-    const symObj = symbols.find(s => s.id === cand.symbol_icon || s.name_hi.includes(cand.symbol_name)) || symbols[0];
-    
-    container.innerHTML = buildDetachableCandidateSlipHtml(voter, {
-      ...cand,
-      symbol_svg: symObj ? symObj.svg : ''
-    });
-  } else {
-    // Exact Image 2 official format for modal preview as well
+  // SUPER ADMIN & NON-CANDIDATES: ALWAYS get the original official slip (print system untouched)
+  if (!isCandidate) {
     container.innerHTML = `
       <div style="max-width: 440px; margin: 0 auto; box-shadow: 0 4px 14px rgba(0,0,0,0.12); border-radius: 4px;">
         ${buildExactOfficialSlipInnerHtml(voter)}
       </div>
     `;
+    return;
   }
+
+  // CANDIDATE LOGIN: Show candidate slip with custom symbol and campaign appeal if permitted
+  if (isCandidate && (State.slipModalViewMode !== 'official') && isCandidateSlipAllowedForVoter(voter)) {
+    const uKey = (u && (u.id || u.username)) || '';
+    // Always prioritize active in-memory State.currentCandidate or local edits so user changes appear instantly without hard refresh
+    let cand = State.currentCandidate;
+    if (!cand) {
+      try {
+        const cached = localStorage.getItem('candidate_profile_' + uKey) || (u && u.id && localStorage.getItem('candidate_profile_' + u.id)) || (u && u.username && localStorage.getItem('candidate_profile_' + u.username));
+        if (cached) cand = JSON.parse(cached);
+      } catch(e) {}
+    }
+    if (!cand && window.PORTAL_USERS_DATA && window.PORTAL_USERS_DATA.candidates) {
+      cand = window.PORTAL_USERS_DATA.candidates[uKey] || (u && u.id && window.PORTAL_USERS_DATA.candidates[u.id]) || (u && u.username && window.PORTAL_USERS_DATA.candidates[u.username]);
+    }
+    if (cand) State.currentCandidate = cand;
+    else cand = findCandidateForVoter(voter);
+    if (cand && (cand.show_banner_on_slip !== false)) {
+      const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
+      const customUrl = cand.custom_symbol_url || cand.custom_symbol || cand.symbol_url;
+      let modalSymbolSvg = '';
+
+      if (customUrl) {
+        if (customUrl.trim().startsWith('<svg')) {
+          modalSymbolSvg = customUrl;
+        } else {
+          const safeSrc = customUrl.replace(/"/g, '&quot;');
+          modalSymbolSvg = `<img src="${safeSrc}" alt="${cand.symbol_name || 'चुनाव चिन्ह'}" class="candidate-custom-symbol-img" style="width:100%; height:100%; max-width:100%; max-height:100%; object-fit:contain; display:block; margin:0 auto;" onerror="this.onerror=null; this.src='https://api.dicebear.com/7.x/identicon/svg?seed=symbol';">`;
+        }
+      } else {
+        const symObj = symbols.find(s => s.id === cand.symbol_icon || (cand.symbol_name && s.name_hi.includes(cand.symbol_name))) || symbols[0];
+        modalSymbolSvg = symObj ? symObj.svg : '';
+      }
+
+      container.innerHTML = buildDetachableCandidateSlipHtml(voter, {
+        ...cand,
+        symbol_svg: modalSymbolSvg,
+        custom_symbol_url: customUrl
+      });
+      return;
+    }
+  }
+
+  // Fallback to official slip for candidate if outside panchayat or official mode selected
+  container.innerHTML = `
+    <div style="max-width: 440px; margin: 0 auto; box-shadow: 0 4px 14px rgba(0,0,0,0.12); border-radius: 4px;">
+      ${buildExactOfficialSlipInnerHtml(voter)}
+    </div>
+  `;
 }
 
 function toggleModalCandidateSlip(checked) {
@@ -3587,8 +4338,8 @@ function closeVoterSlipModal() {
 }
 
 function printVoterSlip() {
-  if (!canUserPrint() && !canUserDownload()) {
-    showToast('⚠️ पर्ची प्रिंट या डाउनलोड करने की अनुमति व्यवस्थापक द्वारा वर्जित है!');
+  if (!canUserPrint()) {
+    showToast('⚠️ पर्ची प्रिंट करने की अनुमति मुख्य व्यवस्थापक द्वारा बंद की गई है!');
     return;
   }
   document.body.className = 'printing-slip';
@@ -3599,16 +4350,20 @@ function printVoterSlip() {
 }
 
 function downloadVoterSlipPdf() {
-  if (!canUserPrint() && !canUserDownload()) {
-    showToast('⚠️ पर्ची डाउनलोड करने की अनुमति व्यवस्थापक द्वारा वर्जित है!');
+  if (!canUserDownload()) {
+    showToast('⚠️ पर्ची डाउनलोड करने की अनुमति मुख्य व्यवस्थापक द्वारा बंद की गई है!');
     return;
   }
-  printVoterSlip();
+  document.body.className = 'printing-slip';
+  window.print();
+  setTimeout(() => {
+    document.body.className = '';
+  }, 500);
 }
 
 function printThermalSingleSlip() {
-  if (!canUserPrint() && !canUserDownload()) {
-    showToast('⚠️ थर्मल पर्ची प्रिंट करने की अनुमति व्यवस्थापक द्वारा वर्जित है!');
+  if (!canUserPrint()) {
+    showToast('⚠️ थर्मल पर्ची प्रिंट करने की अनुमति मुख्य व्यवस्थापक द्वारा बंद की गई है!');
     return;
   }
   if (!State.currentSlipVoter) return;
@@ -4303,6 +5058,10 @@ function renderDirectoryTable(votersList) {
 }
 
 function exportDirectoryToCSV() {
+  if (!canUserDownload()) {
+    showToast('⚠️ मतदाता सूची डाउनलोड / एक्सपोर्ट करने की अनुमति मुख्य व्यवस्थापक द्वारा बंद है!');
+    return;
+  }
   if (currentWardVoters.length === 0) {
     showToast('एक्सपोर्ट करने हेतु कोई डाटा उपलब्ध नहीं है।');
     return;
@@ -4456,6 +5215,15 @@ async function syncWithGoogleSheet(silent = false) {
   renderAlphabeticalList();
   updateBulkGenerator();
 
+  // Also sync Candidates from Google Sheet
+  try {
+    if (typeof syncCandidatesFromGoogleSheetClient === 'function') {
+      await syncCandidatesFromGoogleSheetClient(false);
+    }
+  } catch (e) {
+    console.warn('Candidate sync error:', e);
+  }
+
   if (!silent) {
     if (adminSyncCount > 0 || voterSyncCount > 0) {
       showToast(`सिंक सफल! ${adminSyncCount} प्रभारियों व ${voterSyncCount} मतदाताओं का डेटा अद्यतन।`);
@@ -4568,7 +5336,7 @@ function loadDefaultMasterData() {
     State.voters = window.MASTER_DATA.initial_voters || [];
     State.adminUsers = window.MASTER_DATA.admin_users || [];
     State.deletedVoters = window.MASTER_DATA.deleted_voters || [];
-    State.config.appsScriptUrl = localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbzhZ-VdcGJ_nUuG40vm-MyMNJEnLfTgk3kBqyhi1OIefCgW9Smw0XweLTUd7D6o710lpA/exec';
+    State.config.appsScriptUrl = localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec';
     const appsScriptInput = document.getElementById('appsScriptUrlInput');
     if (appsScriptInput && State.config.appsScriptUrl) {
       appsScriptInput.value = State.config.appsScriptUrl;
@@ -4767,7 +5535,7 @@ function handleCreateUser(e) {
   showToast(`नया यूजर '${username}' जोड़ा गया।`);
 
   // Sync to Google Sheet Apps Script if connected
-  postToAppsScript({
+  if (typeof postToAppsScript === 'function') postToAppsScript({
     action: 'addUser',
     userData: newUser,
     adminUsername: State.currentUser.username
@@ -4804,7 +5572,7 @@ function confirmPasswordChange() {
     closeChangePasswordModal();
     showToast(`'${username}' का पासवर्ड सफलतापूर्वक बदला गया!`);
 
-    postToAppsScript({
+    if (typeof postToAppsScript === 'function') postToAppsScript({
       action: 'updatePassword',
       username: username,
       newPassword: newPassword,
@@ -4830,7 +5598,7 @@ function promptChangeScope(username) {
   renderSuperAdminUsers();
   showToast(`'${username}' के अधिकार अपडेट कर दिए गए!`);
 
-  postToAppsScript({
+  if (typeof postToAppsScript === 'function') postToAppsScript({
     action: 'updateUserScope',
     username: username,
     assignedPanchayats: newGp.trim(),
@@ -5002,28 +5770,155 @@ async function syncLatestActiveUsersFromAppsScript() {
   if (!url) return;
 
   try {
-    const res = await fetch(`${url}?action=getUsers`);
-    const data = await res.json();
+    const [res, cRes] = await Promise.all([
+      fetch(`${url}?action=getUsers&_t=${Date.now()}`).catch(() => null),
+      fetch(`${url}?action=getCandidates&_t=${Date.now()}`).catch(() => null)
+    ]);
+    const data = res && res.ok ? await res.json() : null;
+    const cData = cRes && cRes.ok ? await cRes.json() : null;
+
     if (data && data.success && Array.isArray(data.users) && data.users.length > 0) {
-      State.adminUsers = data.users.map(u => ({
-        user_id: u.userId || u.user_id || `USR${u.rowIndex || ''}`,
-        username: u.username,
-        fullName: u.fullName || u.full_name || u.username,
-        full_name: u.fullName || u.full_name || u.username,
-        mobile: u.mobile || '',
-        role: u.role || 'PANCHAYAT_AGENT',
-        assigned_panchayats: u.assignedPanchayats || u.assigned_panchayats || 'ALL',
-        assignedPanchayats: u.assignedPanchayats || u.assigned_panchayats || 'ALL',
-        assigned_wards: u.assignedWards || u.assigned_wards || 'ALL',
-        assignedWards: u.assignedWards || u.assigned_wards || 'ALL',
-        status: (u.status || 'ACTIVE').toUpperCase(),
-        created_at: u.createdAt || u.created_at || ''
-      }));
+      State.adminUsers = data.users.map(u => {
+        let tabs = [];
+        if (u.tab_search !== undefined || u.tab_alpha !== undefined || u.tab_bulkslip !== undefined || u.tab_directory !== undefined) {
+          if (u.tab_search === true || String(u.tab_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
+          if (u.tab_alpha === true || String(u.tab_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
+          if (u.tab_bulkslip === true || String(u.tab_bulkslip).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
+          if (u.tab_directory === true || String(u.tab_directory).toUpperCase() === 'TRUE') tabs.push('directoryTab');
+        } else if (Array.isArray(u.allowed_tabs)) {
+          tabs = u.allowed_tabs;
+        } else if (typeof u.allowed_tabs === 'string') {
+          try { tabs = JSON.parse(u.allowed_tabs); } catch(e) { tabs = u.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
+        }
+        return {
+          id: u.id || u.userId || u.user_id || u.username,
+          user_id: u.userId || u.user_id || u.username,
+          username: u.username,
+          fullName: u.fullName || u.full_name || u.username,
+          full_name: u.fullName || u.full_name || u.username,
+          mobile: u.mobile || '',
+          role: u.role || 'PANCHAYAT_AGENT',
+          assigned_panchayats: u.assignedPanchayats || u.assigned_panchayats || 'ALL',
+          assignedPanchayats: u.assignedPanchayats || u.assigned_panchayats || 'ALL',
+          assigned_wards: u.assignedWards || u.assigned_wards || 'ALL',
+          assignedWards: u.assignedWards || u.assigned_wards || 'ALL',
+          status: (u.status || 'ACTIVE').toUpperCase(),
+          allowed_tabs: tabs,
+          can_print: (u.can_print === true || String(u.can_print).toUpperCase() === 'TRUE'),
+          can_download: (u.can_download === true || String(u.can_download).toUpperCase() === 'TRUE'),
+          created_at: u.createdAt || u.created_at || ''
+        };
+      });
+
+      // Synchronize live into State.adminControlUsers so all permission changes immediately take effect!
+      if (!State.adminControlUsers) State.adminControlUsers = [];
+      State.adminUsers.forEach(freshUser => {
+        const uKey = String(freshUser.username || freshUser.id).toLowerCase();
+        const existingIdx = State.adminControlUsers.findIndex(x => 
+          (x.id && String(x.id).toLowerCase() === uKey) || 
+          (x.username && String(x.username).toLowerCase() === uKey)
+        );
+        if (existingIdx >= 0) {
+          State.adminControlUsers[existingIdx] = {
+            ...State.adminControlUsers[existingIdx],
+            ...freshUser,
+            allowed_tabs: freshUser.allowed_tabs
+          };
+        } else {
+          State.adminControlUsers.push(freshUser);
+        }
+      });
+      syncCurrentUserWithConfiguredUsers();
+      enforceGatekeeperState();
       localStorage.setItem('panchayat_admins_cache', JSON.stringify(State.adminUsers));
       populateLoginUserDropdown();
       if (document.getElementById('superAdminUsersTable')) {
         renderSuperAdminUsers();
       }
+    }
+
+    // Synchronize candidates from Candidates sheet independently
+    if (cData && cData.success && Array.isArray(cData.candidates)) {
+      if (!State.adminControlUsers) State.adminControlUsers = [];
+      const candsList = cData.candidates.map(sc => {
+        let tabs = [];
+        if (sc.tab_search !== undefined || sc.tab_alpha !== undefined || sc.tab_bulkslip !== undefined || sc.tab_profile !== undefined) {
+          if (sc.tab_search === true || String(sc.tab_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
+          if (sc.tab_alpha === true || String(sc.tab_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
+          if (sc.tab_bulkslip === true || String(sc.tab_bulkslip).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
+          if (sc.tab_profile === true || String(sc.tab_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
+        } else if (Array.isArray(sc.allowed_tabs)) {
+          tabs = sc.allowed_tabs.filter(t => t !== 'directoryTab');
+        } else if (typeof sc.allowed_tabs === 'string') {
+          try { tabs = JSON.parse(sc.allowed_tabs); } catch(e) { tabs = sc.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
+        }
+        return {
+          id: sc.id || ('cand_' + sc.username),
+          username: sc.username,
+          user_id: sc.id || ('cand_' + sc.username),
+          password: sc.password,
+          fullName: sc.candidate_name,
+          full_name: sc.candidate_name,
+          mobile: sc.mobile || '',
+          role: 'CANDIDATE',
+          status: (sc.status || 'ACTIVE').toUpperCase(),
+          allowed_panchayats: sc.panchayat || '',
+          allowed_wards: sc.ward || 'ALL',
+          allowed_tabs: tabs,
+          candidate_mode: sc.candidate_mode || 'user_edit',
+          can_print: (sc.can_print === true || String(sc.can_print).toUpperCase() === 'TRUE'),
+          can_download: (sc.can_download === true || String(sc.can_download).toUpperCase() === 'TRUE'),
+          candidate: sc
+        };
+      });
+      localStorage.setItem('panchayat_candidates_cache', JSON.stringify(candsList));
+      candsList.forEach(cand => {
+        const uKey = String(cand.username || cand.id).toLowerCase();
+        const existingIdx = State.adminControlUsers.findIndex(x => 
+          (x.id && String(x.id).toLowerCase() === uKey) || 
+          (x.username && String(x.username).toLowerCase() === uKey) ||
+          (cand.id && String(x.id).toLowerCase() === cand.id.replace('cand_', '')) ||
+          ((cand.username === 'b' || cand.id === 'cand_b') && (String(x.username).toLowerCase() === 'kamla' || String(x.id).toLowerCase() === 'kamla'))
+        );
+        if (existingIdx >= 0) {
+          State.adminControlUsers[existingIdx] = {
+            ...State.adminControlUsers[existingIdx],
+            ...cand,
+            allowed_tabs: cand.allowed_tabs
+          };
+        } else {
+          State.adminControlUsers.push(cand);
+        }
+
+        // Live update active session tabs if currently logged in user matches this candidate
+        if (State.currentUser) {
+          const curId = String(State.currentUser.id || '').toLowerCase();
+          const curUname = String(State.currentUser.username || '').toLowerCase();
+          const candId = String(cand.id || '').toLowerCase();
+          const candUname = String(cand.username || '').toLowerCase();
+          const candName = String(cand.fullName || cand.full_name || '').toLowerCase();
+          if (
+            curId === candId || curUname === candUname ||
+            curId === candUname || curUname === candId ||
+            curId === ('cand_' + candUname) || curUname === ('cand_' + candUname) ||
+            ((curUname === 'kamla' || curUname === 'कमला' || curId === 'kamla' || curId === 'कमला') && (candUname === 'b' || candId === 'cand_b' || candName.includes('कमला')))
+          ) {
+            State.currentUser.allowed_tabs = [...cand.allowed_tabs];
+            State.currentUser.can_print = cand.can_print;
+            State.currentUser.can_download = cand.can_download;
+            if (cand.candidate) {
+              State.currentUser.candidate = cand.candidate;
+              State.currentCandidate = cand.candidate;
+            }
+            const sk = getSessionStorageKey();
+            localStorage.setItem(sk, JSON.stringify(State.currentUser));
+            sessionStorage.setItem(sk, JSON.stringify(State.currentUser));
+            localStorage.setItem('panchayat_user_session', JSON.stringify(State.currentUser));
+          }
+        }
+      });
+      syncCurrentUserWithConfiguredUsers();
+      enforceGatekeeperState();
     }
   } catch (err) {
     console.warn('Silent sync of active users warning:', err);
@@ -5037,6 +5932,10 @@ async function syncLatestActiveUsersFromAppsScript() {
 let currentPrintListContext = 'search';
 
 function openPrintVoterListModal(context = 'search') {
+  if (!canUserPrint()) {
+    showToast('⚠️ मतदाता सूची प्रिंट करने की अनुमति मुख्य व्यवस्थापक द्वारा बंद है!');
+    return;
+  }
   currentPrintListContext = context;
   const modal = document.getElementById('printVoterListModal');
   const scopeTitle = document.getElementById('printModalScopeTitle');
@@ -5092,8 +5991,8 @@ function confirmExecuteVoterListPrint() {
 }
 
 function executeVoterListPrint(sortMode, scope, context) {
-  if (!canUserPrint() && !canUserDownload()) {
-    showToast('⚠️ मतदाता सूची प्रिंट या पीडीएफ डाउनलोड की अनुमति केवल सुपर एडमिन अथवा उनके द्वारा अधिकृत कार्मिकों को ही है!');
+  if (!canUserPrint()) {
+    showToast('⚠️ मतदाता सूची प्रिंट करने की अनुमति मुख्य व्यवस्थापक द्वारा बंद है!');
     return;
   }
 
@@ -5305,7 +6204,7 @@ function onAlphaBoothChanged() {
   // Filter alpha voters by booth's wards
   const wards = targetBooth.wards;
   State.alphaFilteredVoters = State.voters.filter(v => wards.includes(Number(v.ward_no)));
-  renderAlphaVotersTable(State.alphaFilteredVoters);
+  renderAlphabeticalList();
 }
 
 
@@ -5313,7 +6212,7 @@ function onAlphaBoothChanged() {
 // CANDIDATE PROFILE & OFFICIAL ELECTION SYMBOL ENGINE
 // ==========================================================================
 
-function initCandidateProfileTab() {
+async function initCandidateProfileTab() {
   const gpSelect = document.getElementById('candidateGpSelect');
   const u = State.currentUser;
   const isSuper = (u && (u.role === 'SUPER_ADMIN' || u.role === 'admin'));
@@ -5341,17 +6240,61 @@ function initCandidateProfileTab() {
   // Populate Symbols dropdown and mini-grid
   populateSymbolControls();
 
-  // Populate with existing candidate details if available
   if (!u) return;
 
-  // Check if candidate profile exists
-  let cand = State.currentCandidate;
-  if (!cand) {
-    const cached = localStorage.getItem('candidate_profile_' + (u.id || u.username));
-    if (cached) {
-      try { cand = JSON.parse(cached); State.currentCandidate = cand; } catch(e) {}
-    }
+  const uKey = u.id || u.username;
+  const uIdLower = String(uKey).toLowerCase();
+  const altId = uIdLower.startsWith('cand_') ? uIdLower.replace('cand_', '') : ('cand_' + uIdLower);
+
+  function belongsToUser(c) {
+    if (!c || typeof c !== 'object') return false;
+    const cid = String(c.user_id || '').toLowerCase();
+    if (!cid) return false;
+    return cid === uIdLower || cid === altId || (u.username && cid === String(u.username).toLowerCase());
   }
+
+  let cand = getActiveCandidate();
+
+  if (!cand || !belongsToUser(cand)) {
+    try {
+      const res = await fetch('/api/candidate/' + encodeURIComponent(uKey));
+      if (res.ok) {
+        const d = await res.json();
+        if (d && d.candidate && belongsToUser(d.candidate)) {
+          cand = d.candidate;
+        }
+      }
+    } catch(e) {}
+  }
+
+  // If still not found, create clean isolated candidate profile for THIS user only
+  if (!cand || !belongsToUser(cand)) {
+    cand = {
+      user_id: uKey,
+      candidate_name: (u.full_name && !u.full_name.includes('प्रतिनिधि')) ? u.full_name : (u.name || ''),
+      mobile: u.mobile || '',
+      post: 'सरपंच',
+      panchayat: u.panchayat || u.allowed_panchayats || '',
+      ward: (u.allowed_wards && u.allowed_wards !== 'ALL') ? u.allowed_wards : '',
+      election_date: getGlobalElectionDate(),
+      election_time: getGlobalElectionTime(),
+      symbol_name: 'उगता सूरज',
+      symbol_icon: 'sun',
+      custom_symbol_url: '',
+      photo_url: '',
+      slogan: '',
+      show_banner_on_slip: true,
+      updated_at: new Date().toISOString()
+    };
+  }
+
+  State.currentCandidate = cand;
+  u.candidate = cand;
+  try {
+    localStorage.setItem('candidate_profile_' + uKey, JSON.stringify(cand));
+    if (u.id) localStorage.setItem('candidate_profile_' + u.id, JSON.stringify(cand));
+    if (u.username) localStorage.setItem('candidate_profile_' + u.username, JSON.stringify(cand));
+  } catch(_) {}
 
   const nameInput = document.getElementById('candidateNameInput');
   const mobileInput = document.getElementById('candidateMobileInput');
@@ -5359,18 +6302,30 @@ function initCandidateProfileTab() {
   const sloganText = document.getElementById('candidateSloganTextarea');
   const photoPreview = document.getElementById('candidatePhotoPreview');
   const showBannerCheck = document.getElementById('candidateShowBannerSlip');
+  const electionDateInput = document.getElementById('candidateElectionDateInput');
   const electionTimeInput = document.getElementById('candidateElectionTimeInput');
+  const browseBtn = document.getElementById('candidatePhotoBrowseBtn');
+  const removeBtn = document.getElementById('candidatePhotoRemoveBtn');
 
   if (cand) {
     if (nameInput) nameInput.value = cand.candidate_name || '';
     if (mobileInput) mobileInput.value = cand.mobile || u.mobile || '';
     if (postSelect) postSelect.value = cand.post || 'सरपंच';
     if (gpSelect && cand.panchayat) gpSelect.value = cand.panchayat;
-    const electionDateInput = document.getElementById('candidateElectionDateInput');
-    if (electionDateInput) electionDateInput.value = cand.election_date || '15 अक्टूबर 2026';
-    if (electionTimeInput) electionTimeInput.value = cand.election_time || 'प्रातः 7:00 बजे से सायं 5:00 बजे तक';
+    if (electionDateInput) electionDateInput.value = cand.election_date || getGlobalElectionDate();
+    if (electionTimeInput) electionTimeInput.value = cand.election_time || getGlobalElectionTime();
     if (sloganText) sloganText.value = cand.slogan || '';
-    if (photoPreview && cand.photo_url) photoPreview.src = cand.photo_url;
+    
+    // Photo restore
+    if (photoPreview && !cand.photo_url && (u.username === 'b' || (cand.candidate_name && cand.candidate_name.includes('कमला')))) { cand.photo_url = KAMLA_DEFAULT_PHOTO; }
+    if (photoPreview && cand.photo_url) {
+      photoPreview.src = cand.photo_url;
+      if (!cand.photo_url.includes('dicebear')) {
+        if (browseBtn) browseBtn.innerHTML = '📁 फोटो बदलें (Change Photo)';
+        if (removeBtn) removeBtn.style.display = 'inline-block';
+      }
+    }
+    
     if (showBannerCheck) showBannerCheck.checked = (cand.show_banner_on_slip !== false);
 
     onCandidatePostChanged(cand.post || 'सरपंच');
@@ -5378,21 +6333,41 @@ function initCandidateProfileTab() {
       const wardSelect = document.getElementById('candidateWardSelect');
       if (wardSelect) wardSelect.value = cand.ward;
     }
-    if (cand.symbol_name) onCandidateSymbolChanged(cand.symbol_name);
+
+    // Symbol restore: Check custom image URL vs official SEC symbol name from Google Sheet
+    if (cand.custom_symbol_url && String(cand.custom_symbol_url).trim().length > 5) {
+      State.customSymbolUrl = cand.custom_symbol_url;
+      setSymbolMode('custom');
+      const wrapper = document.getElementById('currentSymbolSvgWrapper');
+      if (wrapper) {
+        wrapper.innerHTML = `<img src="${cand.custom_symbol_url}" alt="कस्टम चिन्ह" style="max-width:100%; max-height:100%; object-fit:contain; display:block;">`;
+      }
+      const customNameInput = document.getElementById('candidateCustomSymbolNameInput');
+      if (customNameInput) customNameInput.value = cand.symbol_name || 'कस्टम चिन्ह';
+      const nameText = document.getElementById('currentSymbolNameText');
+      if (nameText) nameText.textContent = cand.symbol_name || 'कस्टम चिन्ह';
+    } else {
+      setSymbolMode('standard');
+      const targetSymbol = cand.symbol_name || cand.symbol_icon || 'hand';
+      onCandidateSymbolChanged(targetSymbol);
+    }
   } else {
     // Default prefill
     if (nameInput) nameInput.value = u.full_name || '';
     if (mobileInput) mobileInput.value = u.mobile || '';
-    const electionDateInput = document.getElementById('candidateElectionDateInput');
     if (electionDateInput) electionDateInput.value = '15 अक्टूबर 2026';
-    if (electionTimeInput) electionTimeInput.value = 'प्रातः 7:00 बजे से सायं 5:00 बजे तक';
+    if (electionTimeInput) electionTimeInput.value = 'प्रातः 7:00 बजे से सायं 6:00 बजे तक';
     if (gpSelect && u.allowed_panchayats && u.allowed_panchayats !== 'ALL') {
       gpSelect.value = u.allowed_panchayats;
     }
     applySloganPreset(1);
+    setSymbolMode('standard');
   }
 
   renderLiveSpecimenSlip();
+  if (State.currentSlipVoter) {
+    try { renderModalCandidateSlip(State.currentSlipVoter); } catch(_) {}
+  }
 }
 
 function populateSymbolControls() {
@@ -5495,22 +6470,188 @@ function onCandidateWardChanged(w) {
   renderLiveSpecimenSlip();
 }
 
-function onCandidatePhotoSelected(event) {
+// Image compression helper using HTML5 Canvas
+// Shrinks raw photos/symbols from 2-5MB down to ~15-30KB Base64 data URL
+function compressCandidateImage(file, maxWidth, maxHeight, quality = 0.82, isPng = false) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = e => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!isPng) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const mime = isPng ? 'image/png' : 'image/jpeg';
+        resolve(canvas.toDataURL(mime, quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function onCandidatePhotoSelected(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = e => {
+  try {
+    showToast('⏳ फोटो लोड व कंप्रेस की जा रही है...');
+    // Compress photo to max 400x480 (~25-35KB JPEG)
+    const compressedDataUrl = await compressCandidateImage(file, 400, 480, 0.82, false);
     const preview = document.getElementById('candidatePhotoPreview');
-    if (preview) preview.src = e.target.result;
+    if (preview) preview.src = compressedDataUrl;
+
+    const browseBtn = document.getElementById('candidatePhotoBrowseBtn');
+    if (browseBtn) browseBtn.innerHTML = '📁 फोटो बदलें (Change Photo)';
+    const removeBtn = document.getElementById('candidatePhotoRemoveBtn');
+    if (removeBtn) removeBtn.style.display = 'inline-block';
+
     renderLiveSpecimenSlip();
-  };
-  reader.readAsDataURL(file);
+    showToast('✅ फोटो सफलता पूर्वक लोड हुई!');
+  } catch (err) {
+    console.error('Photo compress error:', err);
+    const reader = new FileReader();
+    reader.onload = e => {
+      const preview = document.getElementById('candidatePhotoPreview');
+      if (preview) preview.src = e.target.result;
+      renderLiveSpecimenSlip();
+    };
+    reader.readAsDataURL(file);
+  }
 }
 
 function clearCandidatePhoto() {
   const preview = document.getElementById('candidatePhotoPreview');
   if (preview) preview.src = 'https://api.dicebear.com/7.x/identicon/svg?seed=candidate';
+  const browseBtn = document.getElementById('candidatePhotoBrowseBtn');
+  if (browseBtn) browseBtn.innerHTML = '📁 फोटो चुनें (Choose Photo)';
+  const removeBtn = document.getElementById('candidatePhotoRemoveBtn');
+  if (removeBtn) removeBtn.style.display = 'none';
+  const inp = document.getElementById('candidatePhotoInput');
+  if (inp) inp.value = '';
+  renderLiveSpecimenSlip();
+}
+
+function setSymbolMode(mode) {
+  State.symbolMode = mode;
+  const standardSection = document.getElementById('standardSymbolControlsGroup') || document.getElementById('standardSymbolSection');
+  const customSection = document.getElementById('customSymbolNameGroup') || document.getElementById('customSymbolSection');
+  const btnStandard = document.getElementById('btnModeStandardSymbol') || document.getElementById('btnSymbolModeStandard');
+  const btnCustom = document.getElementById('btnModeCustomSymbol') || document.getElementById('btnSymbolModeCustom');
+
+  if (mode === 'custom') {
+    if (standardSection) standardSection.style.display = 'none';
+    if (customSection) customSection.style.display = 'block';
+    if (btnStandard) {
+      btnStandard.classList.remove('btn-primary', 'active');
+      btnStandard.classList.add('btn-outline-secondary');
+    }
+    if (btnCustom) {
+      btnCustom.classList.remove('btn-outline-secondary');
+      btnCustom.classList.add('btn-primary', 'active');
+    }
+
+    const wrapper = document.getElementById('currentSymbolSvgWrapper');
+    const nameText = document.getElementById('currentSymbolNameText');
+    const customNameInput = document.getElementById('candidateCustomSymbolNameInput');
+    const customName = (customNameInput ? customNameInput.value : '').trim() || 'कस्टम चिन्ह';
+
+    if (State.customSymbolUrl && wrapper) {
+      const safeSrc = State.customSymbolUrl.replace(/"/g, '&quot;');
+      wrapper.innerHTML = `<img src="${safeSrc}" alt="कस्टम चिन्ह" style="max-width:100%; max-height:100%; object-fit:contain; display:block;">`;
+    }
+    if (nameText) nameText.textContent = customName;
+  } else {
+    if (standardSection) standardSection.style.display = 'block';
+    if (customSection) customSection.style.display = 'none';
+    if (btnStandard) {
+      btnStandard.classList.remove('btn-outline-secondary');
+      btnStandard.classList.add('btn-primary', 'active');
+    }
+    if (btnCustom) {
+      btnCustom.classList.remove('btn-primary', 'active');
+      btnCustom.classList.add('btn-outline-secondary');
+    }
+
+    const select = document.getElementById('candidateSymbolSelect');
+    if (select && select.value) {
+      onCandidateSymbolChanged(select.value);
+    }
+  }
+  renderLiveSpecimenSlip();
+}
+
+async function onCustomSymbolSelected(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  try {
+    showToast('⏳ कस्टम चुनाव चिन्ह प्रोसेस किया जा रहा है...');
+    // Compress symbol to max 240x240 PNG to preserve transparency (~10-20KB)
+    const compressedUrl = await compressCandidateImage(file, 240, 240, 0.9, true);
+    State.customSymbolUrl = compressedUrl;
+
+    const wrapper = document.getElementById('currentSymbolSvgWrapper');
+    if (wrapper) {
+      wrapper.innerHTML = `<img src="${compressedUrl}" alt="कस्टम चिन्ह" style="max-width:100%; max-height:100%; object-fit:contain; display:block;">`;
+    }
+
+    // Auto-detect symbol name from filename if not set
+    const nameInput = document.getElementById('candidateCustomSymbolNameInput');
+    if (nameInput && (!nameInput.value || nameInput.value.trim() === 'कस्टम चिन्ह' || nameInput.value.trim() === '')) {
+      const rawName = file.name.replace(/\.[^/.]+$/, "").replace(/[_\-\d]/g, " ").trim();
+      if (rawName) nameInput.value = rawName;
+    }
+
+    const customName = (nameInput ? nameInput.value : '').trim() || 'कस्टम चिन्ह';
+    const nameText = document.getElementById('currentSymbolNameText');
+    if (nameText) nameText.textContent = customName;
+
+    const browseBtn = document.getElementById('candidateCustomSymbolBrowseBtn');
+    if (browseBtn) browseBtn.innerHTML = '📁 चुनाव चिन्ह बदलें';
+    const removeBtn = document.getElementById('candidateCustomSymbolRemoveBtn');
+    if (removeBtn) removeBtn.style.display = 'inline-block';
+
+    renderLiveSpecimenSlip();
+    showToast('✅ कस्टम चुनाव चिन्ह सफलतापूर्वक लोड हुआ!');
+  } catch (err) {
+    console.error('Custom symbol error:', err);
+    showToast('चुनाव चिन्ह लोड करने में समस्या: ' + err.message);
+  }
+}
+
+function clearCustomSymbol() {
+  State.customSymbolUrl = null;
+  const inp = document.getElementById('candidateCustomSymbolInput');
+  if (inp) inp.value = '';
+  const nameInp = document.getElementById('candidateCustomSymbolNameInput');
+  if (nameInp) nameInp.value = '';
+  const browseBtn = document.getElementById('candidateCustomSymbolBrowseBtn');
+  if (browseBtn) browseBtn.innerHTML = '📁 चुनाव चिन्ह फाइल चुनें (PNG/JPG)';
+  const removeBtn = document.getElementById('candidateCustomSymbolRemoveBtn');
+  if (removeBtn) removeBtn.style.display = 'none';
+
+  setSymbolMode('standard');
+}
+
+function onCustomSymbolNameChanged(val) {
+  const nameText = document.getElementById('currentSymbolNameText');
+  if (nameText) nameText.textContent = (val || '').trim() || 'कस्टम चिन्ह';
   renderLiveSpecimenSlip();
 }
 
@@ -5541,29 +6682,44 @@ async function handleSaveCandidateProfile(event) {
   const post = document.getElementById('candidatePostSelect').value;
   const gp = document.getElementById('candidateGpSelect').value;
   const ward = (post === 'वार्ड पंच' && document.getElementById('candidateWardSelect')) ? document.getElementById('candidateWardSelect').value : '';
-  const electionDate = (document.getElementById('candidateElectionDateInput') ? document.getElementById('candidateElectionDateInput').value : '').trim() || '15 अक्टूबर 2026';
-  const electionTime = (document.getElementById('candidateElectionTimeInput') ? document.getElementById('candidateElectionTimeInput').value : '').trim() || 'प्रातः 7:00 बजे से सायं 5:00 बजे तक';
+  const electionDate = (document.getElementById('candidateElectionDateInput') ? document.getElementById('candidateElectionDateInput').value : '').trim() || getGlobalElectionDate();
+  const electionTime = (document.getElementById('candidateElectionTimeInput') ? document.getElementById('candidateElectionTimeInput').value : '').trim() || 'प्रातः 7:00 बजे से सायं 6:00 बजे तक';
   const slogan = (document.getElementById('candidateSloganTextarea').value || '').trim();
   const showBanner = document.getElementById('candidateShowBannerSlip').checked;
   const photoEl = document.getElementById('candidatePhotoPreview');
   const photoUrl = photoEl ? photoEl.src : '';
 
-  const symbolSelect = document.getElementById('candidateSymbolSelect');
-  const symbolId = symbolSelect ? symbolSelect.value : 'sun';
-  const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
-  const symObj = symbols.find(s => s.id === symbolId) || symbols[0];
+  let symbolName = '';
+  let symbolIcon = '';
+  let customSymbolUrl = '';
 
+  if (State.symbolMode === 'custom' && State.customSymbolUrl) {
+    customSymbolUrl = State.customSymbolUrl;
+    symbolIcon = 'custom';
+    symbolName = (document.getElementById('candidateCustomSymbolNameInput')?.value || '').trim() || 'कस्टम चिन्ह';
+  } else {
+    const symbolSelect = document.getElementById('candidateSymbolSelect');
+    const symbolId = symbolSelect ? symbolSelect.value : 'sun';
+    const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
+    const symObj = symbols.find(s => s.id === symbolId) || symbols[0];
+    symbolIcon = symObj.id;
+    symbolName = symObj.name_hi;
+  }
+
+  const uKey = u.id || u.username;
   const profileData = {
-    user_id: u.id || u.username,
+    user_id: uKey,
     candidate_name: name,
     mobile: mobile,
     post: post,
     panchayat: gp,
     ward: ward,
+    ps_zp_ward: (document.getElementById("adminCandPsZpWard")?.value || "").trim(),
     election_date: electionDate,
     election_time: electionTime,
-    symbol_name: symObj.name_hi,
-    symbol_icon: symObj.id,
+    symbol_name: symbolName,
+    symbol_icon: symbolIcon,
+    custom_symbol_url: customSymbolUrl,
     photo_url: photoUrl,
     slogan: slogan,
     show_banner_on_slip: showBanner,
@@ -5571,28 +6727,51 @@ async function handleSaveCandidateProfile(event) {
   };
 
   State.currentCandidate = profileData;
-  localStorage.setItem('candidate_profile_' + (u.id || u.username), JSON.stringify(profileData));
+  localStorage.setItem('candidate_profile_' + uKey, JSON.stringify(profileData));
+  if (u.id) localStorage.setItem('candidate_profile_' + u.id, JSON.stringify(profileData));
+  if (u.username) localStorage.setItem('candidate_profile_' + u.username, JSON.stringify(profileData));
 
-  // Try saving to Node server
+  // Sync to in-memory PORTAL_USERS_DATA
+  if (window.PORTAL_USERS_DATA) {
+    if (!window.PORTAL_USERS_DATA.candidates) window.PORTAL_USERS_DATA.candidates = {};
+    window.PORTAL_USERS_DATA.candidates[uKey] = profileData;
+  }
+
+  // Save to SQLite & portal_users.json on server
   try {
-    const res = await fetch('/api/candidate/' + encodeURIComponent(u.id || u.username), {
+    const res = await fetch('/api/candidate/' + encodeURIComponent(uKey), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(profileData)
     });
     if (res.ok) {
-      showToast('✅ प्रत्याशी प्रोफाइल एवं चुनाव चिन्ह सर्वर पर सुरक्षित!');
+      showToast('✅ प्रत्याशी प्रोफाइल, फोटो एवं चुनाव चिन्ह डेटाबेस में सुरक्षित!');
     } else {
-      showToast('✅ प्रत्याशी प्रोफाइल लोकल सुरक्षित!');
+      showToast('✅ प्रत्याशी प्रोफाइल सुरक्षित!');
     }
   } catch (e) {
     showToast('✅ प्रत्याशी प्रोफाइल सुरक्षित!');
   }
 
+  // Live Auto-Sync to Google Sheet (Candidate_Edits Sheet Tab)
+  try {
+    const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec';
+    if (gScriptUrl) {
+      fetch(gScriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'saveCandidateSelfEdit',
+          candidateData: profileData
+        }),
+        mode: 'no-cors'
+      }).catch(err => console.warn('Candidate Sheet self-edit sync notice:', err));
+    }
+  } catch (sheetErr) {}
+
   renderLiveSpecimenSlip();
 }
 
-// Live specimen render for the Candidate Tab
 function renderLiveSpecimenSlip() {
   const container = document.getElementById('liveSpecimenSlipContainer');
   if (!container) return;
@@ -5602,14 +6781,31 @@ function renderLiveSpecimenSlip() {
   const gp = document.getElementById('candidateGpSelect') ? document.getElementById('candidateGpSelect').value : 'बूबकिया';
   const ward = (post === 'वार्ड पंच' && document.getElementById('candidateWardSelect')) ? document.getElementById('candidateWardSelect').value : '';
   const electionDate = (document.getElementById('candidateElectionDateInput') ? document.getElementById('candidateElectionDateInput').value : '').trim() || '15 अक्टूबर 2026';
-  const electionTime = (document.getElementById('candidateElectionTimeInput') ? document.getElementById('candidateElectionTimeInput').value : '').trim() || 'प्रातः 7:00 बजे से सायं 5:00 बजे तक';
+  const electionTime = (document.getElementById('candidateElectionTimeInput') ? document.getElementById('candidateElectionTimeInput').value : '').trim() || 'प्रातः 7:00 बजे से सायं 6:00 बजे तक';
   const slogan = document.getElementById('candidateSloganTextarea') ? document.getElementById('candidateSloganTextarea').value : '।। समस्त ग्रामवासियों से विनम्र अपील ।।\nअपने कर्मठ एवं ईमानदार प्रत्याशी को विजयी बनावें।';
   const photo = document.getElementById('candidatePhotoPreview') ? document.getElementById('candidatePhotoPreview').src : 'https://api.dicebear.com/7.x/identicon/svg?seed=candidate';
 
-  const symbolSelect = document.getElementById('candidateSymbolSelect');
-  const symbolId = symbolSelect ? symbolSelect.value : 'sun';
-  const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
-  const symObj = symbols.find(s => s.id === symbolId) || symbols[0];
+  let symbolSvg = '';
+  let symbolName = '';
+  let customSymbolUrl = '';
+
+  if (State.symbolMode === 'custom' && State.customSymbolUrl) {
+    customSymbolUrl = State.customSymbolUrl;
+    symbolName = (document.getElementById('candidateCustomSymbolNameInput')?.value || '').trim() || 'कस्टम चिन्ह';
+    if (customSymbolUrl.trim().startsWith('<svg')) {
+      symbolSvg = customSymbolUrl;
+    } else {
+      const safeSrc = customSymbolUrl.replace(/"/g, '&quot;');
+      symbolSvg = `<img src="${safeSrc}" alt="${symbolName}" class="candidate-custom-symbol-img" style="max-width:100%; max-height:100%; object-fit:contain; display:block; margin:0 auto;">`;
+    }
+  } else {
+    const symbolSelect = document.getElementById('candidateSymbolSelect');
+    const symbolId = symbolSelect ? symbolSelect.value : 'sun';
+    const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
+    const symObj = symbols.find(s => s.id === symbolId) || symbols[0];
+    symbolSvg = symObj.svg;
+    symbolName = symObj.name_hi;
+  }
 
   const dummyVoter = {
     serial_no: 104,
@@ -5633,10 +6829,12 @@ function renderLiveSpecimenSlip() {
     post: post,
     panchayat: gp || 'ग्राम पंचायत',
     ward: ward,
+    ps_zp_ward: (gp === 'बांदनवाड़ा' && post && post.includes('पंचायत समिति')) ? '2' : (ward || ''),
     election_date: electionDate,
     election_time: electionTime,
-    symbol_name: symObj.name_hi,
-    symbol_svg: symObj.svg,
+    symbol_name: symbolName,
+    symbol_svg: symbolSvg,
+    custom_symbol_url: customSymbolUrl,
     photo_url: photo,
     slogan: slogan
   });
@@ -5657,8 +6855,8 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
   const bInfo = getBoothForVoter(voter);
   const boothName = (bInfo && (bInfo.name || bInfo.name_hi)) || voter.polling_station_name || 'राजकीय उच्च माध्यमिक विद्यालय कमरा नं.-01 भिनाय';
   const boothNo = (bInfo && bInfo.booth_no) || voter.polling_station_no || '1';
-  const electionDate = candidateData.election_date || (typeof getGlobalElectionDate === 'function' ? getGlobalElectionDate() : '15 अक्टूबर 2026');
-  const electionTime = candidateData.election_time || (typeof getGlobalElectionTime === 'function' ? getGlobalElectionTime() : 'प्रातः 7:00 बजे से सायं 5:00 बजे तक');
+  const electionDate = candidateData.election_date || getGlobalElectionDate();
+  const electionTime = candidateData.election_time || getGlobalElectionTime();
 
   const cName = candidateData.candidate_name || 'प्रत्याशी';
   const cPost = candidateData.post || 'सरपंच';
@@ -5676,7 +6874,7 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
       cSymbolSvg = `<img src="${safeSrc}" alt="${cSymbolName}" class="candidate-custom-symbol-img" style="width:100%; height:100%; max-width:100%; max-height:100%; object-fit:contain; display:block; margin:0 auto;" onerror="this.onerror=null; this.src='https://api.dicebear.com/7.x/identicon/svg?seed=symbol';">`;
     }
   } else {
-    // Look up symbol from official symbols by selected name (e.g. हाथ, कमल, बोतल, साइकिल, आदि)
+    // Look up symbol from official 22 symbols by selected name (e.g. हाथ, कमल, बोतल, साइकिल, आदि)
     if (typeof getSymbolSvgById === 'function') {
       cSymbolSvg = getSymbolSvgById(cSymbolName || candidateData.symbol_icon);
     } else {
@@ -5684,8 +6882,7 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
     }
   }
 
-  const KAMLA_DEFAULT_PHOTO = './assets/kamala_photo.jpg';
-  const cPhoto = candidateData.photo_url || ((candidateData.candidate_name && candidateData.candidate_name.includes('कमला')) || (State.currentUser && (State.currentUser.username === 'kamala' || State.currentUser.username === 'kamla' || State.currentUser.username === 'b')) ? KAMLA_DEFAULT_PHOTO : 'https://api.dicebear.com/7.x/identicon/svg?seed=candidate');
+  const cPhoto = candidateData.photo_url || ((candidateData.candidate_name && candidateData.candidate_name.includes('कमला')) || (State.currentUser && State.currentUser.username === 'b') ? KAMLA_DEFAULT_PHOTO : 'https://api.dicebear.com/7.x/identicon/svg?seed=candidate');
   const cSlogan = (candidateData.slogan || 'अपने कर्मठ एवं ईमानदार प्रत्याशी को विजयी बनावें।').replace(/\n/g, '<br>');
 
   return `
@@ -5694,7 +6891,7 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
       <div class="candidate-banner-top">
         <div class="candidate-banner-main-row">
           <div class="candidate-banner-photo-col">
-            <img src="${cPhoto}" alt="${cName}" onerror="this.src='${KAMLA_DEFAULT_PHOTO}'">
+            <img src="${cPhoto}" alt="${cName}" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=candidate'">
           </div>
           <div class="candidate-banner-info-col">
             <div class="candidate-banner-header">।। श्री गणेशाय नमः ।।</div>
@@ -5855,40 +7052,48 @@ function buildExactOfficialSlipInnerHtml(voter) {
 }
 
 window.buildOfficialSlipHtml = function(voter, layout, theme) {
-  // STRICT RULE: On all other portals (PAN, BLO, etc.), candidate details NEVER appear on any layout (9, 10, 12, 15, 18, 20, 21, thermal)!
-  // Always render pure clean official voter slip (identical to 21-slip format).
-  const isVoterRepo = (window.PORTAL_TYPE === 'voter' || window.PORTAL_TYPE === 'voterslip') || 
-                      (window.location && window.location.href && (window.location.href.toLowerCase().includes('/voter-portal') || window.location.href.toLowerCase().includes('/slip')));
-
-  if (!isVoterRepo) {
-    return buildExactOfficialSlipInnerHtml(voter);
-  }
-
-  // Requirement on voter-portal: 21 slips on A4 page must display ONLY the official voter slip without candidate details!
+  // Requirement: 21 slips on A4 page must display ONLY the official voter slip without candidate details
   if (String(layout) === '21') {
     return buildExactOfficialSlipInnerHtml(voter);
   }
 
-  // Candidate photo slip ONLY permitted when logged in as candidate for their allotted panchayat
-  if (isCandidateSlipAllowedForVoter(voter)) {
-    let cand = State.currentCandidate;
-    if (!cand) {
-      try {
-        cand = JSON.parse(localStorage.getItem('candidate_profile_' + (State.currentUser.id || State.currentUser.username)) || 'null');
-      } catch(e) {}
-    }
+  const u = State.currentUser;
+  const isCandidate = u && (u.role === 'CANDIDATE' || u.type === 'CANDIDATE' || String(u.id || '').startsWith('cand_') || u.candidate_mode === 'user_edit' || u.candidate_mode === 'active');
+
+  // SUPER ADMIN & NON-CANDIDATES: ALWAYS get the original official slip (print system untouched)
+  if (!isCandidate) {
+    return buildExactOfficialSlipInnerHtml(voter);
+  }
+
+  // CANDIDATE LOGIN: Candidate detachable campaign slip
+  if (isCandidate && isCandidateSlipAllowedForVoter(voter)) {
+    const cand = State.currentCandidate || findCandidateForVoter(voter);
     if (cand && (cand.show_banner_on_slip !== false)) {
       const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
-      const symObj = symbols.find(s => s.id === cand.symbol_icon || (cand.symbol_name && s.name_hi.includes(cand.symbol_name))) || symbols[0];
+      const customUrl = cand.custom_symbol_url || cand.custom_symbol || cand.symbol_url;
+      let candSymbolSvg = '';
+
+      if (customUrl) {
+        if (customUrl.trim().startsWith('<svg')) {
+          candSymbolSvg = customUrl;
+        } else {
+          const safeSrc = customUrl.replace(/"/g, '&quot;');
+          candSymbolSvg = `<img src="${safeSrc}" alt="${cand.symbol_name || 'चुनाव चिन्ह'}" class="candidate-custom-symbol-img" style="width:100%; height:100%; max-width:100%; max-height:100%; object-fit:contain; display:block; margin:0 auto;" onerror="this.onerror=null; this.src='https://api.dicebear.com/7.x/identicon/svg?seed=symbol';">`;
+        }
+      } else {
+        const symObj = symbols.find(s => s.id === cand.symbol_icon || (cand.symbol_name && s.name_hi.includes(cand.symbol_name))) || symbols[0];
+        candSymbolSvg = (symObj && symObj.svg) ? symObj.svg : (cand.symbol_svg || '');
+      }
+
       return buildDetachableCandidateSlipHtml(voter, {
         ...cand,
-        candidate_name: cand.candidate_name || State.currentUser.full_name || 'उम्मीदवार',
-        symbol_svg: (symObj && symObj.svg) ? symObj.svg : (cand.symbol_svg || '')
+        candidate_name: cand.candidate_name || (u ? u.full_name : '') || 'उम्मीदवार',
+        symbol_svg: candSymbolSvg,
+        custom_symbol_url: customUrl
       });
     }
   }
 
-  // All other logins (Super Admin, BLO, public, vyavasthapak) get the exact Image 2 pattern
   return buildExactOfficialSlipInnerHtml(voter);
 };
 
@@ -5904,13 +7109,42 @@ async function initAdminControlTab() {
 
 async function loadAdminUsersList(force = false) {
   const bust = Date.now();
+  const sanitizeUserTabs = u => {
+    if (!u) return u;
+    if (typeof isCandidateUser === 'function' && isCandidateUser(u) && Array.isArray(u.allowed_tabs)) {
+      u.allowed_tabs = u.allowed_tabs.filter(t => t !== 'directoryTab');
+    }
+    return u;
+  };
+
   // 1. Try Node.js + SQLite API (with explicit cache-busting & no-store)
   try {
     const res = await fetch(`/api/users?_t=${bust}`, { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
       if (data && data.success && Array.isArray(data.users)) {
-        State.adminControlUsers = data.users;
+        if (data.election_date) {
+          if (!triPortalSettings.voter_portal) triPortalSettings.voter_portal = {};
+          triPortalSettings.voter_portal.election_date = data.election_date;
+          triPortalSettings.election_date = data.election_date;
+        }
+        if (data.election_time) {
+          if (!triPortalSettings.voter_portal) triPortalSettings.voter_portal = {};
+          triPortalSettings.voter_portal.election_time = data.election_time;
+          triPortalSettings.election_time = data.election_time;
+        }
+        applyGlobalElectionDateToUI();
+        State.adminControlUsers = data.users.map(sanitizeUserTabs);
+        if (!window.PORTAL_USERS_DATA) window.PORTAL_USERS_DATA = { users: [], candidates: {} };
+        window.PORTAL_USERS_DATA.users = State.adminControlUsers;
+        if (!window.PORTAL_USERS_DATA.candidates) window.PORTAL_USERS_DATA.candidates = {};
+        if (data.candidates) Object.assign(window.PORTAL_USERS_DATA.candidates, data.candidates);
+        State.adminControlUsers.forEach(u => {
+          if (u.candidate) {
+            if (u.id) window.PORTAL_USERS_DATA.candidates[u.id] = u.candidate;
+            if (u.username) window.PORTAL_USERS_DATA.candidates[u.username] = u.candidate;
+          }
+        });
         syncCurrentUserWithConfiguredUsers();
         return;
       }
@@ -5919,16 +7153,170 @@ async function loadAdminUsersList(force = false) {
     // API server not reachable, fallback to static JSON
   }
 
-  // 2. Try portal_users.json (with explicit cache-busting & no-store)
+  // 2. Try Google Apps Script on GitHub Pages for immediate zero-cache live updates (Users + Candidates)
+  const isGitHub = window.location.hostname.includes('github.io');
+  const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec';
+  if (isGitHub && gScriptUrl) {
+    try {
+      const [gRes, cRes] = await Promise.all([
+        fetch(`${gScriptUrl}?action=getUsers&_t=${bust}`).catch(() => null),
+        fetch(`${gScriptUrl}?action=getCandidates&_t=${bust}`).catch(() => null)
+      ]);
+
+      let combinedUsers = [];
+      let candidatesMap = {};
+
+      if (gRes && gRes.ok) {
+        const gData = await gRes.json();
+        if (gData && Array.isArray(gData.users)) {
+          combinedUsers = gData.users.map(u => {
+            let tabs = [];
+            if (u.tab_search !== undefined || u.tab_alpha !== undefined || u.tab_bulkslip !== undefined || u.tab_directory !== undefined) {
+              if (u.tab_search === true || String(u.tab_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
+              if (u.tab_alpha === true || String(u.tab_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
+              if (u.tab_bulkslip === true || String(u.tab_bulkslip).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
+              if (u.tab_directory === true || String(u.tab_directory).toUpperCase() === 'TRUE') tabs.push('directoryTab');
+            } else if (Array.isArray(u.allowed_tabs)) {
+              tabs = u.allowed_tabs;
+            } else if (typeof u.allowed_tabs === 'string') {
+              try { tabs = JSON.parse(u.allowed_tabs); } catch(e) { tabs = u.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
+            }
+            return {
+              ...u,
+              allowed_tabs: tabs,
+              can_print: (u.can_print === true || String(u.can_print).toUpperCase() === 'TRUE'),
+              can_download: (u.can_download === true || String(u.can_download).toUpperCase() === 'TRUE')
+            };
+          });
+          localStorage.setItem('panchayat_admins_cache', JSON.stringify(combinedUsers));
+        }
+      }
+
+      if (cRes && cRes.ok) {
+        const cData = await cRes.json();
+        if (cData && Array.isArray(cData.candidates)) {
+          const candsList = cData.candidates.map(sc => {
+            let tabs = [];
+            if (sc.tab_search !== undefined || sc.tab_alpha !== undefined || sc.tab_bulkslip !== undefined || sc.tab_profile !== undefined) {
+              if (sc.tab_search === true || String(sc.tab_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
+              if (sc.tab_alpha === true || String(sc.tab_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
+              if (sc.tab_bulkslip === true || String(sc.tab_bulkslip).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
+              if (sc.tab_profile === true || String(sc.tab_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
+            } else if (Array.isArray(sc.allowed_tabs)) {
+              tabs = sc.allowed_tabs.filter(t => t !== 'directoryTab');
+            } else if (typeof sc.allowed_tabs === 'string') {
+              try { tabs = JSON.parse(sc.allowed_tabs); } catch(e) { tabs = sc.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
+            }
+            const candUserObj = {
+              id: sc.id || ('cand_' + sc.username),
+              username: sc.username,
+              user_id: sc.id || ('cand_' + sc.username),
+              password: sc.password,
+              fullName: sc.candidate_name,
+              full_name: sc.candidate_name,
+              mobile: sc.mobile || '',
+              role: 'CANDIDATE',
+              status: (sc.status || 'ACTIVE').toUpperCase(),
+              allowed_panchayats: sc.panchayat || '',
+              allowed_wards: sc.ward || 'ALL',
+              allowed_tabs: tabs,
+              candidate_mode: sc.candidate_mode || 'user_edit',
+              can_print: (sc.can_print === true || String(sc.can_print).toUpperCase() === 'TRUE'),
+              can_download: (sc.can_download === true || String(sc.can_download).toUpperCase() === 'TRUE'),
+              candidate: sc
+            };
+            candidatesMap[candUserObj.id] = sc;
+            candidatesMap[candUserObj.username] = sc;
+            return candUserObj;
+          });
+          localStorage.setItem('panchayat_candidates_cache', JSON.stringify(candsList));
+          candsList.forEach(candUser => {
+            const uKey = String(candUser.username || candUser.id).toLowerCase();
+            const exIdx = combinedUsers.findIndex(u => 
+              (u.id && String(u.id).toLowerCase() === uKey) || 
+              (u.username && String(u.username).toLowerCase() === uKey) ||
+              (candUser.id && String(u.id).toLowerCase() === candUser.id.replace('cand_', '')) ||
+              ((candUser.username === 'b' || candUser.id === 'cand_b') && (String(u.username).toLowerCase() === 'kamla' || String(u.id).toLowerCase() === 'kamla'))
+            );
+            if (exIdx >= 0) combinedUsers[exIdx] = { ...combinedUsers[exIdx], ...candUser };
+            else combinedUsers.push(candUser);
+
+            // Live update active session tabs if currently logged in user matches this candidate
+            if (State.currentUser) {
+              const curId = String(State.currentUser.id || '').toLowerCase();
+              const curUname = String(State.currentUser.username || '').toLowerCase();
+              const candId = String(candUser.id || '').toLowerCase();
+              const candUname = String(candUser.username || '').toLowerCase();
+              const candName = String(candUser.fullName || candUser.full_name || '').toLowerCase();
+              if (
+                curId === candId || curUname === candUname ||
+                curId === candUname || curUname === candId ||
+                curId === ('cand_' + candUname) || curUname === ('cand_' + candUname) ||
+                ((curUname === 'kamla' || curUname === 'कमला' || curId === 'kamla' || curId === 'कमला') && (candUname === 'b' || candId === 'cand_b' || candName.includes('कमला')))
+              ) {
+                State.currentUser.allowed_tabs = [...candUser.allowed_tabs];
+                State.currentUser.can_print = candUser.can_print;
+                State.currentUser.can_download = candUser.can_download;
+                if (candUser.candidate) {
+                  State.currentUser.candidate = candUser.candidate;
+                  State.currentCandidate = candUser.candidate;
+                }
+                const sk = getSessionStorageKey();
+                localStorage.setItem(sk, JSON.stringify(State.currentUser));
+                sessionStorage.setItem(sk, JSON.stringify(State.currentUser));
+                localStorage.setItem('panchayat_user_session', JSON.stringify(State.currentUser));
+              }
+            }
+          });
+        }
+      }
+
+      if (combinedUsers.length > 0) {
+        State.adminControlUsers = combinedUsers.map(sanitizeUserTabs);
+        if (!window.PORTAL_USERS_DATA) window.PORTAL_USERS_DATA = { users: [], candidates: {} };
+        window.PORTAL_USERS_DATA.users = State.adminControlUsers;
+        if (!window.PORTAL_USERS_DATA.candidates) window.PORTAL_USERS_DATA.candidates = {};
+        Object.assign(window.PORTAL_USERS_DATA.candidates, candidatesMap);
+        syncCurrentUserWithConfiguredUsers();
+        return;
+      }
+    } catch(_) {}
+  }
+
+  // 3. Try portal_users.json (with explicit cache-busting & no-store)
   try {
-    const jsonRes = await fetch(`portal_users.json?_t=${bust}`, { cache: 'no-store' });
+    const isMaster = window.location.hostname === 'localhost' || window.location.pathname.includes('/pan');
+    // Always fetch local repo's portal_users.json first (fastest & same-origin), then fallback to master pan
+    let jsonRes = await fetch(`portal_users.json?_t=${bust}`, { cache: 'no-store' });
+    if (!jsonRes.ok && !isMaster) {
+      jsonRes = await fetch(`https://jit9763.github.io/pan/portal_users.json?_t=${bust}`, { cache: 'no-store' });
+    }
     if (jsonRes.ok) {
       const data = await jsonRes.json();
       if (data && Array.isArray(data.users)) {
+        window.PORTAL_USERS_DATA = data;
+        if (data.election_date) {
+          if (!triPortalSettings.voter_portal) triPortalSettings.voter_portal = {};
+          triPortalSettings.voter_portal.election_date = data.election_date;
+          triPortalSettings.election_date = data.election_date;
+        }
+        if (data.election_time) {
+          if (!triPortalSettings.voter_portal) triPortalSettings.voter_portal = {};
+          triPortalSettings.voter_portal.election_time = data.election_time;
+          triPortalSettings.election_time = data.election_time;
+        }
+        applyGlobalElectionDateToUI();
+        if (!window.PORTAL_USERS_DATA.candidates) window.PORTAL_USERS_DATA.candidates = {};
         State.adminControlUsers = data.users.map(u => ({
-          ...u,
-          candidate: (data.candidates && data.candidates[u.id || u.username]) || null
+          ...sanitizeUserTabs(u),
+          candidate: (data.candidates && (data.candidates[u.id] || data.candidates[u.username])) || null
         }));
+        State.adminControlUsers.forEach(u => {
+          if (u.candidate) {
+            if (u.id) window.PORTAL_USERS_DATA.candidates[u.id] = u.candidate;
+            if (u.username) window.PORTAL_USERS_DATA.candidates[u.username] = u.candidate;
+          }
+        });
         syncCurrentUserWithConfiguredUsers();
         return;
       }
@@ -6058,7 +7446,7 @@ function renderAdminControlTab() {
           <label style="font-size:0.72rem; cursor:pointer;"><input type="checkbox" ${allowedTabs.includes('searchTab') ? 'checked' : ''} onchange="toggleUserTab('${uId}', 'searchTab', this.checked)"> खोज</label>
           <label style="font-size:0.72rem; cursor:pointer;"><input type="checkbox" ${allowedTabs.includes('alphaTab') ? 'checked' : ''} onchange="toggleUserTab('${uId}', 'alphaTab', this.checked)"> वर्णमाला</label>
           <label style="font-size:0.72rem; cursor:pointer;"><input type="checkbox" ${allowedTabs.includes('bulkSlipTab') ? 'checked' : ''} onchange="toggleUserTab('${uId}', 'bulkSlipTab', this.checked)"> पर्ची</label>
-          <label style="font-size:0.72rem; cursor:pointer;"><input type="checkbox" ${allowedTabs.includes('directoryTab') ? 'checked' : ''} onchange="toggleUserTab('${uId}', 'directoryTab', this.checked)"> वार्ड</label>
+          ${(u.role === 'CANDIDATE' || u.role === 'प्रत्याशी' || String(uId).startsWith('cand_') || u.candidate_mode === 'user_edit') ? '' : `<label style="font-size:0.72rem; cursor:pointer;"><input type="checkbox" ${allowedTabs.includes('directoryTab') ? 'checked' : ''} onchange="toggleUserTab('${uId}', 'directoryTab', this.checked)"> वार्ड</label>`}
           <label style="font-size:0.72rem; cursor:pointer;"><input type="checkbox" ${allowedTabs.includes('candidateProfileTab') ? 'checked' : ''} onchange="toggleUserTab('${uId}', 'candidateProfileTab', this.checked)"> प्रोफाइल</label>
         </div>
       </td>
@@ -6158,7 +7546,7 @@ async function updateUserField(userId, field, value) {
   } catch(e) {}
 
   await saveAdminUserToServer(u);
-  if (typeof renderBloPassTable === 'function') renderBloPassTable();
+  if (typeof renderBloPassTable === 'function') if (typeof renderBloPassTable === 'function') renderBloPassTable();
   showToast('परिवर्तन सफलतापूर्वक सुरक्षित!');
 }
 
@@ -6175,13 +7563,17 @@ async function toggleUserStatus(userId, newStatus) {
     await saveAdminUserToServer(u);
   }
   if (typeof renderAdminControlTab === 'function') renderAdminControlTab();
-  if (typeof renderBloPassTable === 'function') renderBloPassTable();
+  if (typeof renderBloPassTable === 'function') if (typeof renderBloPassTable === 'function') renderBloPassTable();
   showToast(`खाता स्थिति '${userId}': ${newStatus === 'ACTIVE' ? '🟢 सक्रिय (Active)' : '🔴 निष्क्रिय (Inactive)'}`);
 }
 
 async function toggleUserTab(userId, tabName, isChecked) {
   const u = findOrInitAdminUser(userId);
   if (!u) return;
+  if (tabName === 'directoryTab' && isCandidateUser(u)) {
+    u.allowed_tabs = (u.allowed_tabs || []).filter(t => t !== 'directoryTab');
+    return;
+  }
 
   if (!Array.isArray(u.allowed_tabs)) {
     try {
@@ -6236,7 +7628,7 @@ async function toggleUserTab(userId, tabName, isChecked) {
   if (typeof renderAdminCellTab === 'function') renderAdminCellTab();
   if (typeof renderAdminBloTab === 'function') renderAdminBloTab();
   if (typeof renderAdminControlTab === 'function') renderAdminControlTab();
-  if (typeof renderBloPassTable === 'function') renderBloPassTable();
+  if (typeof renderBloPassTable === 'function') if (typeof renderBloPassTable === 'function') renderBloPassTable();
 
   const tabHiNames = {
     searchTab: 'मतदाता खोज',
@@ -6275,24 +7667,55 @@ function broadcastAdminUpdate(payload) {
 }
 
 function startLivePermissionSyncWatcher() {
-  // A. BroadcastChannel cross-tab instant sync
+  // A. BroadcastChannel cross-tab instant sync (0ms live propagation)
   try {
     if (window.BroadcastChannel) {
       const bc = new BroadcastChannel('panchayat_admin_sync');
-      bc.onmessage = () => {
+      bc.onmessage = (ev) => {
+        if (ev && ev.data && ev.data.userId && ev.data.allowed_tabs && State.currentUser) {
+          const curId = String(State.currentUser.id || State.currentUser.username || '').toLowerCase();
+          if (curId === String(ev.data.userId).toLowerCase()) {
+            State.currentUser.allowed_tabs = [...ev.data.allowed_tabs];
+            const sk = getSessionStorageKey();
+            localStorage.setItem(sk, JSON.stringify(State.currentUser));
+            sessionStorage.setItem(sk, JSON.stringify(State.currentUser));
+            enforceGatekeeperState();
+            if (typeof showToast === 'function') {
+              showToast('🔔 आपकी अनुमतियाँ और टैब तुरंत अपडेट हो गए हैं!');
+            }
+          }
+        }
         loadAdminUsersList(true);
       };
     }
   } catch(e) {}
 
-  // B. Storage event sync for multi-tab
+  // B. Storage event sync for multi-tab across windows
   window.addEventListener('storage', (ev) => {
-    if (ev.key === 'panchayat_last_admin_sync' || ev.key === 'portal_admin_users_overrides') {
+    if (ev.key === 'panchayat_last_admin_sync') {
+      try {
+        const payload = JSON.parse(ev.newValue || '{}');
+        if (payload.userId && payload.allowed_tabs && State.currentUser) {
+          const curId = String(State.currentUser.id || State.currentUser.username || '').toLowerCase();
+          if (curId === String(payload.userId).toLowerCase()) {
+            State.currentUser.allowed_tabs = [...payload.allowed_tabs];
+            const sk = getSessionStorageKey();
+            localStorage.setItem(sk, JSON.stringify(State.currentUser));
+            sessionStorage.setItem(sk, JSON.stringify(State.currentUser));
+            enforceGatekeeperState();
+            if (typeof showToast === 'function') {
+              showToast('🔔 आपकी अनुमतियाँ और टैब तुरंत अपडेट हो गए हैं!');
+            }
+          }
+        }
+      } catch(e) {}
+      loadAdminUsersList(true);
+    } else if (ev.key === 'portal_admin_users_overrides') {
       loadAdminUsersList(true);
     }
   });
 
-  // C. Tab focus / visibility change (instantly refresh permissions when returning to tab)
+  // C. Tab focus / visibility change (instantly refresh permissions when returning to tab without waiting for 45s)
   window.addEventListener('focus', () => {
     loadAdminUsersList(true);
   });
@@ -6302,13 +7725,13 @@ function startLivePermissionSyncWatcher() {
     }
   });
 
-  // D. Background live sync safety loop every 45 seconds (cross-tab sync is already handled instantly via BroadcastChannel & storage events)
+  // D. Live sync loop every 30 seconds
   setInterval(async () => {
     if (document.visibilityState === 'hidden') return;
     try {
       await loadAdminUsersList(false);
     } catch(e) {}
-  }, 45000);
+  }, 30000);
 }
 
 function togglePasswordVisibility(inputId, btn) {
@@ -6420,8 +7843,8 @@ async function handleCreateUserSubmit(event) {
     post: post,
     panchayat: gp,
     ward: isSingleWard ? ward : '',
-    election_date: '15 अक्टूबर 2026',
-    election_time: 'प्रातः 7:00 बजे से सायं 5:00 बजे तक',
+    election_date: getGlobalElectionDate(),
+    election_time: getGlobalElectionTime(),
     symbol_name: 'उगता सूरज',
     symbol_icon: 'sun',
     show_banner_on_slip: true
@@ -6471,7 +7894,122 @@ async function deleteAdminUser(userId) {
   showToast('उपयोगकर्ता हटाया गया।');
 }
 
-function openAdminCandidateModal(userId) {
+function setAdminSymbolMode(mode) {
+  State.adminSymbolMode = mode;
+  const btnStd = document.getElementById('adminBtnSymbolStandard');
+  const btnCst = document.getElementById('adminBtnSymbolCustom');
+  const secStd = document.getElementById('adminStandardSymbolSection');
+  const secCst = document.getElementById('adminCustomSymbolSection');
+
+  if (mode === 'custom') {
+    if (btnStd) btnStd.classList.remove('active');
+    if (btnCst) btnCst.classList.add('active');
+    if (secStd) secStd.style.display = 'none';
+    if (secCst) secCst.style.display = 'block';
+
+    const customUrl = document.getElementById('adminCandCustomSymbolUrl')?.value;
+    const customName = (document.getElementById('adminCandCustomSymbolName')?.value || '').trim() || 'कस्टम चिन्ह';
+    updateAdminCandCustomSymbolPreview(customUrl, customName);
+  } else {
+    if (btnStd) btnStd.classList.add('active');
+    if (btnCst) btnCst.classList.remove('active');
+    if (secStd) secStd.style.display = 'block';
+    if (secCst) secCst.style.display = 'none';
+
+    onAdminCandSymbolChanged();
+  }
+}
+
+async function handleAdminCandCustomSymbolFile(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  try {
+    showToast('⏳ कस्टम चुनाव चिन्ह प्रोसेस किया जा रहा है...');
+    const compressedUrl = await compressCandidateImage(file, 240, 240, 0.9, true);
+    
+    document.getElementById('adminCandCustomSymbolUrl').value = compressedUrl;
+    
+    const nameInp = document.getElementById('adminCandCustomSymbolName');
+    if (nameInp && (!nameInp.value || nameInp.value.trim() === 'कस्टम चिन्ह' || nameInp.value.trim() === '')) {
+      const rawName = file.name.replace(/\.[^/.]+$/, "").replace(/[_\-\d]/g, " ").trim();
+      if (rawName) nameInp.value = rawName;
+    }
+    const customName = (nameInp ? nameInp.value : '').trim() || 'कस्टम चिन्ह';
+
+    updateAdminCandCustomSymbolPreview(compressedUrl, customName);
+
+    const removeBtn = document.getElementById('adminCandCustomSymbolRemoveBtn');
+    if (removeBtn) removeBtn.style.display = 'inline-block';
+
+    showToast('✅ कस्टम चुनाव चिन्ह लोड हुआ!');
+  } catch (err) {
+    console.error('Admin custom symbol file error:', err);
+    showToast('चुनाव चिन्ह लोड करने में समस्या: ' + err.message);
+  }
+}
+
+function clearAdminCandCustomSymbol() {
+  const fileInp = document.getElementById('adminCandCustomSymbolFile');
+  if (fileInp) fileInp.value = '';
+  const urlInp = document.getElementById('adminCandCustomSymbolUrl');
+  if (urlInp) urlInp.value = '';
+  const nameInp = document.getElementById('adminCandCustomSymbolName');
+  if (nameInp) nameInp.value = '';
+
+  const removeBtn = document.getElementById('adminCandCustomSymbolRemoveBtn');
+  if (removeBtn) removeBtn.style.display = 'none';
+
+  setAdminSymbolMode('standard');
+}
+
+function onAdminCandCustomSymbolNameInput(val) {
+  const nameEl = document.getElementById('adminCandSymbolPreviewName');
+  if (nameEl) nameEl.textContent = (val || '').trim() || 'कस्टम चिन्ह';
+}
+
+function updateAdminCandCustomSymbolPreview(url, name) {
+  const previewImg = document.getElementById('adminCandCustomSymbolPreviewImg');
+  const placeholder = document.getElementById('adminCandCustomSymbolPlaceholder');
+  const badgeSvg = document.getElementById('adminCandSymbolPreviewSvg');
+  const badgeName = document.getElementById('adminCandSymbolPreviewName');
+
+  if (url) {
+    if (previewImg) { previewImg.src = url; previewImg.style.display = 'block'; }
+    if (placeholder) placeholder.style.display = 'none';
+    if (badgeSvg) badgeSvg.innerHTML = `<img src="${url}" alt="कस्टम चिन्ह" style="max-width:100%; max-height:100%; object-fit:contain; display:block;">`;
+  } else {
+    if (previewImg) { previewImg.src = ''; previewImg.style.display = 'none'; }
+    if (placeholder) placeholder.style.display = 'block';
+    if (badgeSvg) badgeSvg.innerHTML = '🗳️';
+  }
+  if (badgeName) badgeName.textContent = name || 'कस्टम चिन्ह';
+}
+
+function updateAdminCandSymbolPreview() {
+  const isCustom = (State.adminSymbolMode === 'custom');
+  if (isCustom) {
+    const url = document.getElementById('adminCandCustomSymbolUrl')?.value;
+    const name = (document.getElementById('adminCandCustomSymbolName')?.value || '').trim() || 'कस्टम चिन्ह';
+    updateAdminCandCustomSymbolPreview(url, name);
+    return;
+  }
+
+  const symId = document.getElementById('adminCandSymbol')?.value || 'sun';
+  const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
+  const symObj = symbols.find(s => s.id === symId) || symbols[0];
+
+  const svgBox = document.getElementById('adminCandSymbolPreviewSvg');
+  const nameEl = document.getElementById('adminCandSymbolPreviewName');
+  if (svgBox && symObj) svgBox.innerHTML = symObj.svg || '🗳️';
+  if (nameEl && symObj) nameEl.textContent = symObj.name_hi;
+}
+
+function onAdminCandSymbolChanged() {
+  updateAdminCandSymbolPreview();
+}
+
+async function openAdminCandidateModal(userId) {
   const u = (State.adminControlUsers || []).find(x => (x.id || x.username) === userId) || { id: userId, username: userId };
 
   const titleEl = document.getElementById('adminCandidateModalUserTitle');
@@ -6506,7 +8044,21 @@ function openAdminCandidateModal(userId) {
     });
   }
 
+  // Fetch freshest candidate profile from server API for 100% sync
   let cand = u.candidate;
+  try {
+    const res = await fetch('/api/candidate/' + encodeURIComponent(userId));
+    if (res.ok) {
+      const d = await res.json();
+      if (d && d.candidate && d.candidate.candidate_name) {
+        cand = { ...(cand || {}), ...d.candidate };
+        u.candidate = cand;
+      }
+    }
+  } catch(e) {}
+  if (!cand && window.PORTAL_USERS_DATA && window.PORTAL_USERS_DATA.candidates) {
+    cand = window.PORTAL_USERS_DATA.candidates[userId] || window.PORTAL_USERS_DATA.candidates[u.username];
+  }
   if (!cand) {
     try {
       cand = JSON.parse(localStorage.getItem('candidate_profile_' + userId) || localStorage.getItem('candidate_profile_' + (u.username || '')) || 'null');
@@ -6523,9 +8075,15 @@ function openAdminCandidateModal(userId) {
   if (gpSelect) gpSelect.value = targetGp;
 
   document.getElementById('adminCandWard').value = cand.ward || (u.allowed_wards !== 'ALL' ? u.allowed_wards : '');
+  if (document.getElementById('adminCandElectionDate')) {
+    document.getElementById('adminCandElectionDate').value = cand.election_date || getGlobalElectionDate();
+  }
+  if (document.getElementById('adminCandElectionTime')) {
+    document.getElementById('adminCandElectionTime').value = cand.election_time || getGlobalElectionTime();
+  }
   
   if (document.getElementById('adminCandElectionTime')) {
-    document.getElementById('adminCandElectionTime').value = cand.election_time || 'प्रातः 7:00 बजे से सायं 5:00 बजे तक';
+    document.getElementById('adminCandElectionTime').value = cand.election_time || 'प्रातः 7:00 बजे से सायं 6:00 बजे तक';
   }
   document.getElementById('adminCandSlogan').value = cand.slogan || '';
   document.getElementById('adminCandPhotoUrl').value = cand.photo_url || '';
@@ -6534,15 +8092,50 @@ function openAdminCandidateModal(userId) {
     document.getElementById('adminCandPhotoFile').value = '';
   }
 
-  const symId = cand.symbol_icon || 'sun';
-  if (symSelect) symSelect.value = symId;
-  document.getElementById('adminCandCustomSymbol').value = cand.symbol_name || '';
+  // Custom symbol vs Standard symbol restore
+  const customUrlInp = document.getElementById('adminCandCustomSymbolUrl');
+  const customNameInp = document.getElementById('adminCandCustomSymbolName');
+  const removeBtn = document.getElementById('adminCandCustomSymbolRemoveBtn');
+
+  if (cand.custom_symbol_url || cand.symbol_icon === 'custom') {
+    if (customUrlInp) customUrlInp.value = cand.custom_symbol_url || '';
+    if (customNameInp) customNameInp.value = cand.symbol_name || 'कस्टम चिन्ह';
+    if (removeBtn) removeBtn.style.display = cand.custom_symbol_url ? 'inline-block' : 'none';
+    setAdminSymbolMode('custom');
+  } else {
+    if (customUrlInp) customUrlInp.value = '';
+    if (customNameInp) customNameInp.value = '';
+    if (removeBtn) removeBtn.style.display = 'none';
+    if (symSelect) symSelect.value = cand.symbol_icon || 'sun';
+    setAdminSymbolMode('standard');
+  }
 
   const showBannerCb = document.getElementById('adminCandShowBanner');
   if (showBannerCb) showBannerCb.checked = (cand.show_banner_on_slip !== false);
 
+  // Populate Allowed Tabs
+  let userTabs = u.allowed_tabs || cand.allowed_tabs;
+  if (typeof userTabs === 'string') {
+    try { userTabs = JSON.parse(userTabs); } catch(e) { userTabs = userTabs.split(',').map(s=>s.trim()).filter(Boolean); }
+  }
+  if (!Array.isArray(userTabs) || userTabs.length === 0) {
+    userTabs = ['searchTab', 'alphaTab', 'bulkSlipTab', 'candidateProfileTab'];
+  }
+  document.querySelectorAll('.admin-cand-tab-cb').forEach(cb => {
+    cb.checked = userTabs.includes(cb.value);
+  });
+
+  // Populate Candidate Mode & Action Permissions
+  const modeSel = document.getElementById('adminCandMode');
+  if (modeSel) modeSel.value = cand.candidate_mode || u.candidate_mode || 'user_edit';
+
+  const printCb = document.getElementById('adminCandCanPrint');
+  if (printCb) printCb.checked = (cand.can_print !== false && u.can_print !== false);
+
+  const dlCb = document.getElementById('adminCandCanDownload');
+  if (dlCb) dlCb.checked = (cand.can_download !== false && u.can_download !== false);
+
   updateAdminCandPhotoPreview();
-  updateAdminCandSymbolPreview();
 
   const modal = document.getElementById('adminCandidateModal');
   if (modal) modal.style.display = 'flex';
@@ -6556,13 +8149,19 @@ function closeAdminCandidateModal() {
 function handleAdminCandPhotoFile(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const base64 = e.target.result;
-    document.getElementById('adminCandPhotoUrl').value = base64;
+
+  compressCandidateImage(file, 400, 480, 0.82, false).then(compressedUrl => {
+    document.getElementById('adminCandPhotoUrl').value = compressedUrl;
     updateAdminCandPhotoPreview();
-  };
-  reader.readAsDataURL(file);
+    showToast('✅ फोटो कंप्रेस व लोड हुई!');
+  }).catch(err => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('adminCandPhotoUrl').value = e.target.result;
+      updateAdminCandPhotoPreview();
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function updateAdminCandPhotoPreview() {
@@ -6588,33 +8187,6 @@ function clearAdminCandPhoto() {
   updateAdminCandPhotoPreview();
 }
 
-function onAdminCandSymbolChanged() {
-  const symId = document.getElementById('adminCandSymbol')?.value;
-  const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
-  const symObj = symbols.find(s => s.id === symId);
-  if (symObj) {
-    document.getElementById('adminCandCustomSymbol').value = symObj.name_hi;
-  }
-  updateAdminCandSymbolPreview();
-}
-
-function onAdminCandCustomSymbolInput(val) {
-  const nameEl = document.getElementById('adminCandSymbolPreviewName');
-  if (nameEl) nameEl.textContent = val || 'उगता सूरज';
-}
-
-function updateAdminCandSymbolPreview() {
-  const symId = document.getElementById('adminCandSymbol')?.value || 'sun';
-  const customName = document.getElementById('adminCandCustomSymbol')?.value?.trim();
-  const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
-  const symObj = symbols.find(s => s.id === symId) || symbols[0];
-
-  const svgBox = document.getElementById('adminCandSymbolPreviewSvg');
-  const nameEl = document.getElementById('adminCandSymbolPreviewName');
-  if (svgBox && symObj) svgBox.innerHTML = symObj.svg || '🗳️';
-  if (nameEl) nameEl.textContent = customName || (symObj ? symObj.name_hi : 'उगता सूरज');
-}
-
 async function handleAdminSaveCandidate(event) {
   if (event) event.preventDefault();
 
@@ -6625,15 +8197,27 @@ async function handleAdminSaveCandidate(event) {
   const post = document.getElementById('adminCandPost').value;
   const gp = document.getElementById('adminCandGpSelect')?.value || 'बूबकिया';
   const ward = document.getElementById('adminCandWard').value.trim();
-  const electionTime = (document.getElementById('adminCandElectionTime')?.value || '').trim() || 'प्रातः 7:00 बजे से सायं 5:00 बजे तक';
+  const electionDate = (document.getElementById('adminCandElectionDate')?.value || '').trim() || getGlobalElectionDate();
+  const electionTime = (document.getElementById('adminCandElectionTime')?.value || '').trim() || getGlobalElectionTime();
   const slogan = document.getElementById('adminCandSlogan').value.trim();
   const photo = document.getElementById('adminCandPhotoUrl').value.trim();
   const showBanner = document.getElementById('adminCandShowBanner')?.checked !== false;
 
-  const symbolId = document.getElementById('adminCandSymbol').value;
-  const customSymbol = document.getElementById('adminCandCustomSymbol').value.trim();
-  const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
-  const symObj = symbols.find(s => s.id === symbolId) || symbols[0];
+  let symbolName = '';
+  let symbolIcon = '';
+  let customSymbolUrl = '';
+
+  if (State.adminSymbolMode === 'custom') {
+    customSymbolUrl = document.getElementById('adminCandCustomSymbolUrl')?.value || '';
+    symbolName = (document.getElementById('adminCandCustomSymbolName')?.value || '').trim() || 'कस्टम चिन्ह';
+    symbolIcon = 'custom';
+  } else {
+    const symbolId = document.getElementById('adminCandSymbol').value;
+    const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
+    const symObj = symbols.find(s => s.id === symbolId) || symbols[0];
+    symbolName = symObj.name_hi;
+    symbolIcon = symObj.id;
+  }
 
   const candData = {
     user_id: userId,
@@ -6643,19 +8227,25 @@ async function handleAdminSaveCandidate(event) {
     post: post,
     panchayat: gp,
     ward: ward,
+    election_date: electionDate,
     election_time: electionTime,
-    symbol_name: customSymbol || symObj.name_hi,
-    symbol_icon: symObj.id,
-    symbol_svg: symObj.svg || '',
+    symbol_name: symbolName,
+    symbol_icon: symbolIcon,
+    custom_symbol_url: customSymbolUrl,
     photo_url: photo,
     slogan: slogan,
     show_banner_on_slip: showBanner,
+    allowed_tabs: Array.from(document.querySelectorAll('.admin-cand-tab-cb:checked')).map(cb => cb.value),
+    candidate_mode: document.getElementById('adminCandMode')?.value || 'user_edit',
+    can_print: document.getElementById('adminCandCanPrint')?.checked !== false,
+    can_download: document.getElementById('adminCandCanDownload')?.checked !== false,
     updated_at: new Date().toISOString()
   };
 
   // 1. Update in State.adminControlUsers
   if (!State.adminControlUsers) State.adminControlUsers = [];
-  let u = State.adminControlUsers.find(x => (x.id || x.username) === userId);
+  const altId = userId.startsWith('cand_') ? userId.replace('cand_', '') : ('cand_' + userId);
+  let u = State.adminControlUsers.find(x => (x.id === userId || x.username === userId || x.id === altId || x.username === altId));
   if (u) {
     u.name = name;
     u.full_name = name;
@@ -6663,58 +8253,36 @@ async function handleAdminSaveCandidate(event) {
     u.panchayat = gp;
     u.allowed_panchayats = gp;
     u.allowed_wards = ward || 'ALL';
+    u.allowed_tabs = candData.allowed_tabs;
+    u.candidate_mode = candData.candidate_mode;
+    u.can_print = candData.can_print;
+    u.can_download = candData.can_download;
     u.candidate = candData;
   }
 
-  // 2. Update in State.adminUsers
-  if (State.adminUsers) {
-    let au = State.adminUsers.find(x => (x.id || x.username || x.user_id) === userId);
-    if (au) {
-      au.name = name;
-      au.full_name = name;
-      au.mobile = mobile;
-      au.panchayat = gp;
-      au.allowed_panchayats = gp;
-      au.allowed_wards = ward || 'ALL';
-      au.candidate = candData;
-    }
+  // 2. Update in window.PORTAL_USERS_DATA.candidates for BOTH keys
+  if (!window.PORTAL_USERS_DATA) window.PORTAL_USERS_DATA = { users: [], candidates: {} };
+  if (!window.PORTAL_USERS_DATA.candidates) window.PORTAL_USERS_DATA.candidates = {};
+  window.PORTAL_USERS_DATA.candidates[userId] = candData;
+  window.PORTAL_USERS_DATA.candidates[altId] = candData;
+  if (u && u.username) {
+    window.PORTAL_USERS_DATA.candidates[u.username] = candData;
+    window.PORTAL_USERS_DATA.candidates['cand_' + u.username] = candData;
+  }
+  if (u && u.id) {
+    window.PORTAL_USERS_DATA.candidates[u.id] = candData;
+    window.PORTAL_USERS_DATA.candidates[u.id.replace('cand_', '')] = candData;
   }
 
-  // 3. Persist to localStorage across all aliases so candidate login reflects immediately
-  const aliasKeys = [userId, (u && u.username), (u && u.id)].filter(Boolean);
-  aliasKeys.forEach(k => {
-    localStorage.setItem('candidate_profile_' + k, JSON.stringify(candData));
-    localStorage.setItem('candidate_profile_' + k.toLowerCase(), JSON.stringify(candData));
-    saveUserOverride(k, 'candidate', candData);
-    saveUserOverride(k, 'mobile', mobile);
-    saveUserOverride(k, 'full_name', name);
-    saveUserOverride(k, 'allowed_panchayats', gp);
-    saveUserOverride(k, 'allowed_wards', ward || 'ALL');
-  });
-
-  // 4. Update portal_admin_users_overrides in localStorage
+  // 3. Save to localStorage for both keys
   try {
-    localStorage.setItem('portal_admin_users_overrides', JSON.stringify(State.adminControlUsers));
+    localStorage.setItem('candidate_profile_' + userId, JSON.stringify(candData));
+    localStorage.setItem('candidate_profile_' + altId, JSON.stringify(candData));
+    if (u && u.username) localStorage.setItem('candidate_profile_' + u.username, JSON.stringify(candData));
   } catch(e) {}
 
-  // 5. Update portal_custom_users in localStorage
-  try {
-    const customUsers = JSON.parse(localStorage.getItem('portal_custom_users') || '[]');
-    const cIdx = customUsers.findIndex(x => (x.id || x.username) === userId);
-    if (cIdx >= 0) {
-      customUsers[cIdx].name = name;
-      customUsers[cIdx].full_name = name;
-      customUsers[cIdx].mobile = mobile;
-      customUsers[cIdx].panchayat = gp;
-      customUsers[cIdx].allowed_panchayats = gp;
-      customUsers[cIdx].allowed_wards = ward || 'ALL';
-      customUsers[cIdx].candidate = candData;
-      localStorage.setItem('portal_custom_users', JSON.stringify(customUsers));
-    }
-  } catch(e) {}
-
-  // 6. If currently logged in user is this candidate, apply live immediately
-  if (State.currentUser && (State.currentUser.id === userId || State.currentUser.username === userId)) {
+  // 4. If current logged in user is this candidate, update active state & apply to topbar immediately
+  if (State.currentUser && (State.currentUser.id === userId || State.currentUser.username === userId || State.currentUser.id === altId || State.currentUser.username === altId)) {
     State.currentCandidate = candData;
     State.currentUser.full_name = name;
     State.currentUser.name = name;
@@ -6723,31 +8291,46 @@ async function handleAdminSaveCandidate(event) {
     State.currentUser.allowed_panchayats = gp;
     State.currentUser.allowed_wards = ward || 'ALL';
     State.currentUser.candidate = candData;
-    localStorage.setItem('panchayat_current_user', JSON.stringify(State.currentUser));
+    const sk = getSessionStorageKey();
+    localStorage.setItem(sk, JSON.stringify(State.currentUser));
+    sessionStorage.setItem(sk, JSON.stringify(State.currentUser));
+    localStorage.setItem('panchayat_user_session', JSON.stringify(State.currentUser));
   }
 
-  // 7. Save to Node.js backend & SQLite (which exports to portal_users.json and syncs both workspaces)
-  if (u) {
-    await saveAdminUserToServer(u);
-  }
+  // Apply to UI (Topbar, inputs, preview)
+  applyGlobalElectionDateToUI();
+
+  // 5. Send POST to server API to save in SQLite & portal_users.json
   try {
     await fetch('/api/candidate/' + encodeURIComponent(userId), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(candData)
     });
-  } catch (e) {
-    console.log('Candidate save fallback:', e);
-  }
+  } catch(e) {}
 
-  // 8. Close modal, refresh tables & UI
+  // Push candidate to Google Sheet in background
+  try {
+    const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec';
+    if (gScriptUrl) {
+      fetch(gScriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'saveCandidate',
+          candidateData: candData
+        }),
+        mode: 'no-cors'
+      }).catch(() => {});
+    }
+  } catch (e) {}
+
+  // Broadcast to other open tabs
+  broadcastAdminUpdate({ type: 'CANDIDATE_UPDATED', userId, candidate: candData });
+
   closeAdminCandidateModal();
-  if (typeof renderAdminCandTab === 'function') renderAdminCandTab();
   if (typeof renderAdminControlTab === 'function') renderAdminControlTab();
-  if (typeof renderCandidateProfileForm === 'function' && State.activeTab === 'candidateProfileTab') {
-    renderCandidateProfileForm();
-  }
-  showToast(`✅ प्रत्याशी / एजेंट '${name}' (${userId}) का विवरण, चुनाव चिन्ह व फोटो सफलतापूर्वक सुरक्षित व लागू!`);
+  showToast(`✅ प्रत्याशी '${name}' का विवरण, फोटो व चुनाव चिन्ह सुरक्षित!`);
 }
 
 async function syncAllAdminStateToCloud() {
@@ -6830,41 +8413,50 @@ async function handleSelfPasswordSubmit(event) {
   const u = State.currentUser;
   if (!u) return;
 
-  const currentPass = document.getElementById('selfCurrentPasswordInput').value;
-  const newPass = document.getElementById('selfNewPasswordInput').value;
-  const confirmPass = document.getElementById('selfConfirmPasswordInput').value;
+  const newPassInput = document.getElementById('selfNewPasswordInput');
+  const newPass = newPassInput ? newPassInput.value.trim() : '';
 
-  if (newPass !== confirmPass) {
-    showToast('नया पासवर्ड और पुष्टि पासवर्ड मेल नहीं खाते!');
+  if (!newPass) {
+    showToast('कृपया नया पासवर्ड दर्ज करें!');
     return;
   }
 
+  const username = u.username || u.id;
+
+  // 1. Update session locally
+  u.password = newPass;
+  localStorage.setItem('panchayat_user_session', JSON.stringify(u));
+  const sk = (typeof getSessionStorageKey === 'function') ? getSessionStorageKey() : 'panchayat_user_session';
+  localStorage.setItem(sk, JSON.stringify(u));
+  sessionStorage.setItem(sk, JSON.stringify(u));
+  closeSelfPasswordModal();
+  showToast('💾 पासवर्ड सुरक्षित किया जा रहा है...');
+
+  // 2. Send to Local Server (SQLite & JSON)
   try {
-    const res = await fetch('/api/change-password', {
+    fetch('/api/change-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        username: u.username || u.id,
-        currentPassword: currentPass,
+        username: username,
         newPassword: newPass
       })
-    });
-    const data = await res.json();
-    if (data && data.success) {
-      u.password = newPass;
-      localStorage.setItem('panchayat_user_session', JSON.stringify(u));
-      closeSelfPasswordModal();
-      showToast('✅ पासवर्ड सफलतापूर्वक बदल दिया गया!');
-      return;
-    } else {
-      showToast('त्रुटि: ' + ((data && data.error) ? data.error : 'पासवर्ड नहीं बदला जा सका'));
+    }).catch(e => console.warn('Local password change notice:', e.message));
+  } catch(e) {}
+
+  // 3. Immediately forward to Google Apps Script (Live Google Sheet)
+  try {
+    if (typeof postToAppsScript === 'function') {
+      postToAppsScript({
+        action: 'updatePassword',
+        username: username,
+        newPassword: newPass,
+        adminUsername: username
+      });
     }
-  } catch (e) {
-    u.password = newPass;
-    localStorage.setItem('panchayat_user_session', JSON.stringify(u));
-    closeSelfPasswordModal();
-    showToast('✅ पासवर्ड लोकल सुरक्षित!');
-  }
+  } catch(e) {}
+
+  showToast('✅ पासवर्ड पोर्टल व गूगल शीट दोनों में सुरक्षित!');
 }
 
 
@@ -6876,6 +8468,15 @@ let activeDirCategory = 'ALL';
 let activeDirGpBooth = 'ALL';
 
 function initDirectoryTab() {
+  const curU = State.currentUser;
+  const isCand = isCandidateUser(curU);
+  const isVoter = (window.PORTAL_TYPE === 'voter') || 
+                  (window.location && window.location.href && window.location.href.toLowerCase().includes('/voter-portal')) ||
+                  (typeof getPortalContext === 'function' && getPortalContext() === 'voter');
+  if (isCand || isVoter) {
+    switchTab('searchTab');
+    return;
+  }
   const dir = getMasterDirectory();
   if (!dir) return;
 
@@ -7033,8 +8634,8 @@ function renderDirectoryList() {
   // 2. Filter by GP or Booth
   let selectedGpName = '';
   let selectedBoothNo = '';
-  if (activeDirGpBooth.startsWith('GP_')) {
-    selectedGpName = activeDirGpBooth.replace('GP_', '');
+  if (activeDirGpBooth.startsWith('GP_') || activeDirGpBooth.startsWith('GP:')) {
+    selectedGpName = activeDirGpBooth.replace(/^(GP_|GP:)/, '');
   } else if (activeDirGpBooth.startsWith('BOOTH_')) {
     selectedBoothNo = activeDirGpBooth.replace('BOOTH_', '');
     // Find GP for this booth
@@ -7043,12 +8644,14 @@ function renderDirectoryList() {
   }
 
   if (selectedGpName) {
+    const normGp = (selectedGpName || '').normalize('NFC').trim();
     contacts = contacts.filter(c => {
-      if (c.panchayat === selectedGpName) return true;
-      if (c.panchayats && c.panchayats.includes(selectedGpName)) return true;
-      if (c.school_office && c.school_office.includes(selectedGpName)) return true;
-      if (c.area_display && c.area_display.includes(selectedGpName)) return true;
-      if (c.patwar_mandal && c.patwar_mandal.includes(selectedGpName)) return true;
+      const cP = (c.panchayat || '').normalize('NFC').trim();
+      if (cP === normGp) return true;
+      if (c.panchayats && c.panchayats.some(p => (p || '').normalize('NFC').trim() === normGp)) return true;
+      if (c.school_office && c.school_office.normalize('NFC').includes(normGp)) return true;
+      if (c.area_display && c.area_display.normalize('NFC').includes(normGp)) return true;
+      if (c.patwar_mandal && c.patwar_mandal.normalize('NFC').includes(normGp)) return true;
       // Booth specific match if booth filter
       if (selectedBoothNo && c.booth_no && String(c.booth_no) === String(selectedBoothNo)) return true;
       return false;
@@ -7346,7 +8949,7 @@ async function adminPromptChangePass(userId, name) {
     uInState.password = trimmed;
     try { localStorage.setItem('portal_admin_users_overrides', JSON.stringify(State.adminControlUsers)); } catch(e) {}
   }
-  renderBloPassTable();
+  if (typeof renderBloPassTable === 'function') renderBloPassTable();
   if (typeof renderAdminControlTab === 'function') renderAdminControlTab();
 
   try {
@@ -7456,14 +9059,29 @@ async function handleGatekeeperLogin(event) {
         const data = await res.json();
         if (data && data.success && data.user) {
           State.currentUser = data.user;
+          const candProfile = data.candidate || data.user.candidate || (window.PORTAL_USERS_DATA && window.PORTAL_USERS_DATA.candidates && (window.PORTAL_USERS_DATA.candidates[data.user.id] || window.PORTAL_USERS_DATA.candidates[data.user.username]));
+          if (candProfile) {
+            State.currentCandidate = candProfile;
+            State.currentUser.candidate = candProfile;
+            try {
+              localStorage.setItem('candidate_profile_' + data.user.id, JSON.stringify(candProfile));
+              localStorage.setItem('candidate_profile_' + data.user.username, JSON.stringify(candProfile));
+            } catch(_) {}
+          }
+          if (isCandidateUser(State.currentUser)) {
+            if (!Array.isArray(State.currentUser.allowed_tabs)) {
+              State.currentUser.allowed_tabs = [];
+            }
+          }
           syncCurrentUserWithConfiguredUsers();
           const sk = getSessionStorageKey();
-          if (document.getElementById('gatekeeperRememberMe')?.checked) {
-            localStorage.setItem(sk, JSON.stringify(State.currentUser));
-            if (getPortalContext() === 'master') localStorage.setItem('panchayat_user_session', JSON.stringify(State.currentUser));
-          } else {
-            sessionStorage.setItem(sk, JSON.stringify(State.currentUser));
+          localStorage.setItem(sk, JSON.stringify(State.currentUser));
+          sessionStorage.setItem(sk, JSON.stringify(State.currentUser));
+          localStorage.setItem('panchayat_user_session', JSON.stringify(State.currentUser));
+          if (typeof document !== 'undefined') {
+            document.documentElement.classList.add('user-logged-in');
           }
+          applyGlobalElectionDateToUI();
           enforceGatekeeperState();
           showToast(`नमस्ते ${data.user.full_name || data.user.name || data.user.username}! स्वागत है।`);
           return;
@@ -7649,14 +9267,19 @@ async function handleGatekeeperLogin(event) {
 
   const unameLower = username.toLowerCase();
   const candMatch = allCandidatePool.find(u => {
-    if (u.role === 'BLO' || u.role === 'बी.एल.ओ.' || u.role === 'CELL_MEMBER' || u.category === 'CELL' || u.role === 'BLOCK_PRABHARI') {
+    if (u.role === 'BLO' || u.role === 'बी.एल.ओ.' || u.role === 'CELL_MEMBER' || u.category === 'CELL' || u.role === 'BLOCK_PRABHARI' || (u.id && String(u.id).toLowerCase().startsWith('blo_')) || (u.username && String(u.username).toLowerCase().startsWith('blo_')) || (u.id && String(u.id).toLowerCase().startsWith('cell_'))) {
       return false;
     }
-    return (u.username && u.username.toLowerCase() === unameLower) || 
-           (u.user_id && u.user_id.toLowerCase() === unameLower) ||
-           (u.id && u.id.toLowerCase() === unameLower) ||
-           (u.id && u.id.toLowerCase() === `cand_${unameLower}`) ||
-           (u.username && u.username.toLowerCase() === `cand_${unameLower}`);
+    const cU = (u.username || '').toLowerCase();
+    const cId = (u.id || u.user_id || '').toLowerCase();
+    const cName = (u.full_name || u.fullName || u.candidate_name || u.name || '').toLowerCase();
+    return cU === unameLower || 
+           cId === unameLower ||
+           cId === `cand_${unameLower}` ||
+           cU === `cand_${unameLower}` ||
+           (unameLower.startsWith('cand_') && (cU === unameLower.replace(/^cand_/, '') || cId === unameLower.replace(/^cand_/, ''))) ||
+           cName === unameLower ||
+           ((unameLower === 'kamla' || unameLower === 'कमला' || unameLower === 'kamla sharma' || unameLower === 'कमला शर्मा') && (cU === 'b' || cId === 'cand_b' || cName.includes('कमला')));
   });
   if (candMatch) {
     const candStatus = getCustomUserStatus(candMatch.username) || candMatch.status || 'ACTIVE';
@@ -7680,17 +9303,55 @@ async function handleGatekeeperLogin(event) {
         panchayat: candMatch.allowed_panchayats || candMatch.panchayat || candMatch.assigned_panchayats || '',
         allowed_panchayats: candMatch.allowed_panchayats || candMatch.panchayat || candMatch.assigned_panchayats || '',
         allowed_wards: candMatch.allowed_wards || candMatch.ward || candMatch.assigned_wards || 'ALL',
-        allowed_tabs: (Array.isArray(candMatch.allowed_tabs) && candMatch.allowed_tabs.length > 0) ? candMatch.allowed_tabs : ['searchTab'],
+        allowed_tabs: Array.isArray(candMatch.allowed_tabs)
+          ? candMatch.allowed_tabs.filter(t => t !== 'directoryTab')
+          : [],
         candidate_mode: 'user_edit'
       };
       State.currentUser = candUser;
 
       // Initialize candidate profile
-      let candProfile = candMatch.candidate;
+      // Initialize candidate profile (Always prefer authoritative remote data over stale localStorage)
+      let candProfile = null;
+      if (window.PORTAL_USERS_DATA && window.PORTAL_USERS_DATA.candidates) {
+        candProfile = window.PORTAL_USERS_DATA.candidates[candUser.id] || window.PORTAL_USERS_DATA.candidates[candUser.username];
+      }
+      if (!candProfile && candMatch && candMatch.candidate) {
+        candProfile = candMatch.candidate;
+      }
       if (!candProfile) {
         try {
-          candProfile = JSON.parse(localStorage.getItem('candidate_profile_' + candUser.id) || localStorage.getItem('candidate_profile_' + candUser.username) || 'null');
+          const res = await fetch('/api/candidate/' + encodeURIComponent(candUser.id || candUser.username));
+          if (res.ok) {
+            const d = await res.json();
+            if (d && d.candidate && d.candidate.candidate_name) {
+              candProfile = d.candidate;
+            }
+          }
         } catch(e) {}
+      }
+      if (!candProfile) {
+        try {
+          const cached = localStorage.getItem('candidate_profile_' + candUser.id) || localStorage.getItem('candidate_profile_' + candUser.username);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed && !String(parsed.slogan || '').includes('सुपरएडमिन द्वारा सिंक')) {
+              candProfile = parsed;
+            }
+          }
+        } catch(e) {}
+      }
+      if (candProfile) {
+        if (String(candProfile.slogan || '').includes('सुपरएडमिन द्वारा सिंक')) {
+          candProfile.slogan = '।। समस्त ग्रामवासियों से विनम्र अपील ।।\nअपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।';
+        }
+        if (String(candProfile.candidate_name || '').toLowerCase().includes('narendra')) {
+          candProfile.candidate_name = 'श्री रामेश्वर जाट';
+        }
+      }
+      if (String(candUser.full_name || '').toLowerCase().includes('narendra')) {
+        candUser.full_name = 'श्री रामेश्वर जाट';
+        candUser.name = 'श्री रामेश्वर जाट';
       }
       if (!candProfile) {
         candProfile = {
@@ -7715,13 +9376,76 @@ async function handleGatekeeperLogin(event) {
       enforceGatekeeperState();
       showToast(`नमस्ते ${candUser.full_name}! प्रत्याशी सत्र प्रारंभ हुआ।`);
       return;
-    } else {
-      if (errorDiv) {
-        errorDiv.textContent = 'अमान्य पासवर्ड! कृपया सही पासवर्ड दर्ज करें।';
-        errorDiv.style.display = 'block';
-      }
-      return;
     }
+  }
+
+  // E2. Online Google Sheet Direct Candidate Verification (For newly added candidates or real-time password updates)
+  const isVoterContext = (typeof getPortalContext === 'function' && getPortalContext() === 'voter') || window.location.pathname.includes('voter-portal');
+  const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec';
+
+  if (gScriptUrl) {
+    try {
+      const gUrl = `${gScriptUrl}${gScriptUrl.includes('?') ? '&' : '?'}action=candidateLogin&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&_t=${Date.now()}`;
+      const gRes = await fetch(gUrl);
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        if (gData && gData.success && gData.user && gData.candidate) {
+          const candUser = gData.user;
+          const candProfile = gData.candidate;
+          let allowed = gData.candidate?.allowed_tabs || gData.user?.allowed_tabs;
+          if (typeof allowed === 'string') {
+            try { allowed = JSON.parse(allowed); } catch(e) { allowed = allowed.split(',').map(s=>s.trim()).filter(Boolean); }
+          }
+          if (!Array.isArray(allowed)) {
+            allowed = ['searchTab', 'alphaTab', 'bulkSlipTab', 'candidateProfileTab'];
+          }
+          candUser.allowed_tabs = allowed.filter(t => t !== 'directoryTab');
+          candUser.can_print = (gData.candidate?.can_print !== false && gData.user?.can_print !== false);
+          candUser.can_download = (gData.candidate?.can_download !== false && gData.user?.can_download !== false);
+          candUser.candidate_mode = 'user_edit';
+          candUser.candidate = candProfile;
+          State.currentUser = candUser;
+          State.currentCandidate = candProfile;
+
+          if (!window.PORTAL_USERS_DATA) window.PORTAL_USERS_DATA = { users: [], candidates: {} };
+          if (!window.PORTAL_USERS_DATA.candidates) window.PORTAL_USERS_DATA.candidates = {};
+          window.PORTAL_USERS_DATA.candidates[candUser.id] = candProfile;
+          window.PORTAL_USERS_DATA.candidates[candUser.username] = candProfile;
+
+          try {
+            localStorage.setItem('candidate_profile_' + candUser.id, JSON.stringify(candProfile));
+            localStorage.setItem('candidate_profile_' + candUser.username, JSON.stringify(candProfile));
+            const sk = getSessionStorageKey();
+            localStorage.setItem(sk, JSON.stringify(candUser));
+            sessionStorage.setItem(sk, JSON.stringify(candUser));
+          } catch(_) {}
+
+          if (typeof document !== 'undefined') {
+            document.documentElement.classList.add('user-logged-in');
+          }
+          applyGlobalElectionDateToUI();
+          enforceGatekeeperState();
+          showToast(`नमस्ते ${candUser.full_name || candUser.username}! प्रत्याशी पोर्टल में स्वागत है (गूगल शीट सत्यापित)।`);
+          return;
+        } else if (gData && gData.error && (isVoterContext || candMatch)) {
+          if (errorDiv) {
+            errorDiv.textContent = gData.error;
+            errorDiv.style.display = 'block';
+          }
+          return;
+        }
+      }
+    } catch(gErr) {
+      console.warn('Google Sheet online candidate authentication notice:', gErr);
+    }
+  }
+
+  if (candMatch) {
+    if (errorDiv) {
+      errorDiv.textContent = 'अमान्य पासवर्ड! कृपया सही पासवर्ड दर्ज करें।';
+      errorDiv.style.display = 'block';
+    }
+    return;
   }
 
   // F. BLO & Cell Members lookup (Synchronized with Super Admin configuration)
@@ -7738,7 +9462,9 @@ async function handleGatekeeperLogin(event) {
       const bloUname = bloMatch.username || bloMatch.id || ('blo_' + bloMatch.booth_no);
       const cfgUser = (State.adminControlUsers || []).find(u => 
         (u.id && String(u.id).toLowerCase() === bloUname.toLowerCase()) || 
-        (u.username && String(u.username).toLowerCase() === bloUname.toLowerCase())
+        (u.username && String(u.username).toLowerCase() === bloUname.toLowerCase()) ||
+        (bloMatch.user_id && (String(u.id).toLowerCase() === String(bloMatch.user_id).toLowerCase() || String(u.username).toLowerCase() === String(bloMatch.user_id).toLowerCase())) ||
+        (bloMatch.old_part_no && (String(u.id).toLowerCase() === ('blo_' + bloMatch.old_part_no) || String(u.username).toLowerCase() === ('blo_' + bloMatch.old_part_no)))
       );
       
       const bloStatus = cfgUser?.status || getCustomUserStatus(bloUname) || 'ACTIVE';
@@ -7754,7 +9480,7 @@ async function handleGatekeeperLogin(event) {
       if (password === bloPass) {
         let allowedTabs = (cfgUser && Array.isArray(cfgUser.allowed_tabs))
           ? cfgUser.allowed_tabs
-          : ['searchTab', 'alphaTab', 'directoryTab'];
+          : ['searchTab'];
         let allowedGps = cfgUser?.allowed_panchayats || [bloMatch.panchayat];
         let allowedWards = cfgUser?.allowed_wards || (bloMatch.wards ? bloMatch.wards.split(',').map(w => w.trim()) : 'ALL');
 
@@ -7762,8 +9488,8 @@ async function handleGatekeeperLogin(event) {
           id: bloUname,
           username: bloUname,
           role: 'BLO',
-          full_name: `${bloMatch.name} (BLO भाग ${bloMatch.booth_no})`,
-          booth_no: bloMatch.booth_no,
+          full_name: `${bloMatch.name} (BLO भाग ${bloMatch.old_part_no || bloMatch.booth_no || username.replace('blo_', '')})`,
+          booth_no: String(bloMatch.old_part_no || bloMatch.booth_no || username.replace('blo_', '')),
           panchayat: typeof allowedGps === 'string' ? allowedGps : bloMatch.panchayat,
           allowed_panchayats: typeof allowedGps === 'string' ? allowedGps : JSON.stringify(allowedGps),
           allowed_wards: typeof allowedWards === 'string' ? allowedWards : (Array.isArray(allowedWards) ? JSON.stringify(allowedWards) : allowedWards),
@@ -7775,7 +9501,13 @@ async function handleGatekeeperLogin(event) {
           candidate_mode: 'admin_locked'
         };
         State.currentUser = bloUser;
-        localStorage.setItem(getSessionStorageKey(), JSON.stringify(bloUser));
+        const sk = getSessionStorageKey();
+        localStorage.setItem(sk, JSON.stringify(bloUser));
+        sessionStorage.setItem(sk, JSON.stringify(bloUser));
+        localStorage.setItem('panchayat_user_session', JSON.stringify(bloUser));
+        if (typeof document !== 'undefined') {
+          document.documentElement.classList.add('user-logged-in');
+        }
         enforceGatekeeperState();
         showToast(`नमस्ते ${bloMatch.name}! बी.एल.ओ. सत्र प्रारंभ हुआ।`);
         return;
@@ -7833,7 +9565,13 @@ async function handleGatekeeperLogin(event) {
           candidate_mode: 'admin_locked'
         };
         State.currentUser = cellUser;
-        localStorage.setItem(getSessionStorageKey(), JSON.stringify(cellUser));
+        const sk = getSessionStorageKey();
+        localStorage.setItem(sk, JSON.stringify(cellUser));
+        sessionStorage.setItem(sk, JSON.stringify(cellUser));
+        localStorage.setItem('panchayat_user_session', JSON.stringify(cellUser));
+        if (typeof document !== 'undefined') {
+          document.documentElement.classList.add('user-logged-in');
+        }
         enforceGatekeeperState();
         showToast(`नमस्ते ${cellMatch.name}! प्रकोष्ठ सत्र प्रारंभ हुआ।`);
         return;
@@ -7856,15 +9594,49 @@ async function handleGatekeeperLogin(event) {
 
 function logoutUser() {
   State.currentUser = null;
-  const sk = getSessionStorageKey();
-  localStorage.removeItem(sk);
-  sessionStorage.removeItem(sk);
-  if (getPortalContext() === 'master') {
-    localStorage.removeItem('panchayat_user_session');
-    sessionStorage.removeItem('panchayat_user_session');
+  State.currentCandidate = null;
+
+  // 1. Instantly remove user-logged-in class from both html and body
+  if (typeof document !== 'undefined') {
+    document.documentElement.classList.remove('user-logged-in');
+    if (document.body) document.body.classList.remove('user-logged-in');
   }
-  enforceGatekeeperState();
-  showToast('आप सफलतापूर्वक लॉगआउट हो गए हैं।');
+
+  // 2. Clear all portal session keys across localStorage and sessionStorage
+  const sessionKeys = [
+    'panchayat_session_voter',
+    'panchayat_session_master',
+    'panchayat_session_blo',
+    'panchayat_user_session',
+    'portal_session_voter',
+    'portal_session_master',
+    'portal_session_blo',
+    'panchayat_session'
+  ];
+
+  sessionKeys.forEach(k => {
+    try {
+      localStorage.removeItem(k);
+      sessionStorage.removeItem(k);
+    } catch(_) {}
+  });
+
+  // 3. Clear password and error in login form
+  const passEl = document.getElementById('gatekeeperPassword');
+  if (passEl) passEl.value = '';
+  const errEl = document.getElementById('gatekeeperError');
+  if (errEl) errEl.style.display = 'none';
+
+  // 4. Reset screen elements
+  const gatekeeper = document.getElementById('welcomeGatekeeper');
+  const mainApp = document.getElementById('mainPortalApp');
+  if (gatekeeper) gatekeeper.style.display = 'flex';
+  if (mainApp) mainApp.style.display = 'none';
+
+  // 5. Clean page reload to ensure 100% fresh login gatekeeper state without leftover memory
+  try {
+    window.location.reload();
+  } catch(_) {}
 }
 
 
@@ -7872,35 +9644,66 @@ function logoutUser() {
 // TRI-PORTAL MASTER COMMAND & CONTROL ENGINE (PAN MASTER HUB)
 // ==========================================================================
 
-let triPortalSettings = {
-  voter_portal: { status: 'ACTIVE', modules: { search: true, alpha: true, slips: true, candidate_edit: true } },
-  blo_portal: { status: 'ACTIVE', block_bulk_slips: true, scope_restricted: true, cell_directory: true }
-};
+// triPortalSettings and helpers moved to top of file
 
 async function loadTriPortalSettings() {
-  try {
-    const res = await fetch('/api/portal-settings');
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.voter_portal) {
-        triPortalSettings = data;
-        updateTriPortalUiFromSettings();
-        return;
+  const isLocalServer = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const bust = Date.now();
+  let loaded = false;
+
+  if (isLocalServer) {
+    try {
+      const res = await fetch(`/api/portal-settings?_t=${bust}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && (data.voter_portal || data.election_date)) {
+          triPortalSettings = { ...triPortalSettings, ...data };
+          loaded = true;
+        }
       }
-    }
-  } catch(e) {}
-  
-  // Local fallback
-  try {
-    const local = JSON.parse(localStorage.getItem('portal_tri_settings') || '{}');
-    if (local.voter_portal) {
-      triPortalSettings = local;
-      updateTriPortalUiFromSettings();
-    }
-  } catch(e) {}
+    } catch(e) {}
+  }
+
+  if (!loaded) {
+    try {
+      let res = await fetch(`portal_settings.json?_t=${bust}`, { cache: 'no-store' });
+      if (!res.ok) {
+        res = await fetch(`https://jit9763.github.io/pan/portal_settings.json?_t=${bust}`, { cache: 'no-store' });
+      }
+      if (res.ok) {
+        const data = await res.json();
+        if (data && (data.voter_portal || data.election_date)) {
+          triPortalSettings = { ...triPortalSettings, ...data };
+          loaded = true;
+        }
+      }
+    } catch(e) {}
+  }
+
+  if (loaded) {
+    localStorage.setItem('portal_tri_settings', JSON.stringify(triPortalSettings));
+  } else {
+    try {
+      const local = JSON.parse(localStorage.getItem('portal_tri_settings') || '{}');
+      if (local && (local.voter_portal || local.election_date)) {
+        triPortalSettings = { ...triPortalSettings, ...local };
+      }
+    } catch(e) {}
+  }
+
+  updateTriPortalUiFromSettings();
+  applyGlobalElectionDateToUI();
 }
 
 function updateTriPortalUiFromSettings() {
+  const vDateInp = document.getElementById('voterPortalElectionDateInput');
+  const vTimeInp = document.getElementById('voterPortalElectionTimeInput');
+  if (vDateInp) {
+    vDateInp.value = triPortalSettings.voter_portal?.election_date || triPortalSettings.election_date || '15 अक्टूबर 2026';
+  }
+  if (vTimeInp) {
+    vTimeInp.value = triPortalSettings.voter_portal?.election_time || triPortalSettings.election_time || 'प्रातः 7:00 बजे से सायं 6:00 बजे तक';
+  }
   const vBtn = document.getElementById('btnToggleVoterPortalLive');
   const vBadge = document.getElementById('voterPortalStatusBadge');
   if (vBtn && vBadge) {
@@ -8148,6 +9951,208 @@ function onNewUserGpChanged(gpName) {
   }
 }
 
+
+// ================================================================================================
+// ZERO HARD-REFRESH SILENT BACKGROUND DATA UPDATER
+// Polls lightweight version.json (from CDN/same origin) every 30s with zero Apps Script quota use!
+// ================================================================================================
+let lastSeenVersionTimestamp = 0;
+async function checkSilentDataUpdates() {
+  try {
+    const res = await fetch(`version.json?_t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const vData = await res.json();
+    if (!vData || !vData.timestamp) return;
+
+    if (!lastSeenVersionTimestamp) {
+      lastSeenVersionTimestamp = vData.timestamp;
+      return;
+    }
+
+    if (vData.timestamp > lastSeenVersionTimestamp) {
+      console.log('🔄 Live data update detected via version.json! Silently refreshing permissions & candidate profiles in-memory...');
+      lastSeenVersionTimestamp = vData.timestamp;
+      if (typeof loadConfiguredUsers === 'function') {
+        await loadConfiguredUsers();
+      }
+      if (typeof syncCurrentUserWithConfiguredUsers === 'function') {
+        syncCurrentUserWithConfiguredUsers();
+      }
+      if (typeof enforceGatekeeperState === 'function') {
+        enforceGatekeeperState();
+      }
+      if (typeof renderCandidateBanner === 'function') {
+        renderCandidateBanner();
+      }
+      if (typeof renderAdminControlTab === 'function' && document.getElementById('adminControlTab')?.classList.contains('active')) {
+        renderAdminControlTab();
+      }
+    }
+  } catch (e) {}
+}
+setInterval(checkSilentDataUpdates, 30000);
+
+
+// ================================================================================================
+// REAL-TIME AUTO-SYNC: ZERO HARD REFRESH LIVE PERMISSION SYNC ENGINE
+// Automatically checks for Google Sheet / Server permission changes every 4 seconds
+// and immediately updates UI, tabs, print/download rights without any page refresh!
+// ================================================================================================
+let isCheckingLivePerms = false;
+async function checkLivePermissionsUpdate() {
+  if (isCheckingLivePerms) return;
+  if (!State.currentUser) return;
+
+  const u = State.currentUser;
+  const isSuperAdmin = (u.role === 'SUPER_ADMIN' || u.role === 'admin' || (u.id && String(u.id).toLowerCase() === 'admin'));
+  if (isSuperAdmin) {
+    return;
+  }
+
+  isCheckingLivePerms = true;
+
+  try {
+    const uKey = String(u.username || u.id || '').toLowerCase();
+    const boothExact = u.booth_no ? `blo_${String(u.booth_no).trim().toLowerCase()}` : '';
+    const matchesUser = (x) => {
+      const xU = String(x.username || '').toLowerCase();
+      const xId = String(x.id || '').toLowerCase();
+      return xU === uKey || xId === uKey || (boothExact && (xU === boothExact || xId === boothExact));
+    };
+    const bust = Date.now();
+
+    let freshUser = null;
+
+    const isLocalNode = window.location.hostname === 'localhost' || window.location.port === '3000' || (window.location.protocol.startsWith('http') && !window.location.hostname.includes('github.io'));
+    const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec';
+
+    if (isLocalNode) {
+      // 1. Local Node.js server: ultra-fast in-memory / SQLite API
+      try {
+        const res = await fetch(`/api/users?_t=${bust}`, { cache: 'no-store' });
+        if (res.ok) {
+          const d = await res.json();
+          if (d && Array.isArray(d.users)) {
+            freshUser = d.users.find(matchesUser);
+            State.adminControlUsers = d.users;
+          }
+        }
+      } catch(_) {}
+    } else {
+      // 2. Static GitHub Pages: Query Google Apps Script FIRST for real-time live permission updates straight from Google Sheet!
+      if (gScriptUrl) {
+        try {
+          const res = await fetch(`${gScriptUrl}?action=getUsers&_t=${bust}`);
+          if (res.ok) {
+            const d = await res.json();
+            if (d && Array.isArray(d.users)) {
+              freshUser = d.users.find(matchesUser);
+              State.adminControlUsers = d.users;
+            }
+          }
+        } catch(_) {}
+      }
+
+      // 3. Fallback to portal_users.json if Google Apps Script is slow/offline
+      if (!freshUser) {
+        try {
+          const res = await fetch(`portal_users.json?_t=${bust}`, { cache: 'no-store' });
+          if (res.ok) {
+            const d = await res.json();
+            if (d && Array.isArray(d.users)) {
+              freshUser = d.users.find(matchesUser);
+              State.adminControlUsers = d.users;
+            }
+          }
+        } catch(_) {}
+      }
+    }
+
+    if (freshUser) {
+      let newTabs = freshUser.allowed_tabs;
+      if (typeof newTabs === 'string') {
+        try { newTabs = JSON.parse(newTabs); } catch(e) { newTabs = newTabs.split(',').map(s=>s.trim()).filter(Boolean); }
+      }
+      if (!Array.isArray(newTabs)) newTabs = [];
+
+      if (freshUser.tab_search !== undefined || freshUser.tab_alpha !== undefined || freshUser.tab_bulkslip !== undefined || freshUser.tab_profile !== undefined) {
+        newTabs = [];
+        if (freshUser.tab_search === true || String(freshUser.tab_search).toUpperCase() === 'TRUE') newTabs.push('searchTab');
+        if (freshUser.tab_alpha === true || String(freshUser.tab_alpha).toUpperCase() === 'TRUE') newTabs.push('alphaTab');
+        if (freshUser.tab_bulkslip === true || String(freshUser.tab_bulkslip).toUpperCase() === 'TRUE') newTabs.push('bulkSlipTab');
+        if (freshUser.tab_directory === true || String(freshUser.tab_directory).toUpperCase() === 'TRUE') newTabs.push('directoryTab');
+        if (freshUser.tab_profile === true || String(freshUser.tab_profile).toUpperCase() === 'TRUE') newTabs.push('candidateProfileTab');
+      }
+
+      const isCand = isCandidateUser(u);
+      const isVoter = (typeof getPortalContext === 'function' && getPortalContext() === 'voter') || (window.PORTAL_TYPE === 'voter');
+      if (isCand || isVoter) {
+        newTabs = newTabs.filter(t => t !== 'directoryTab');
+      }
+
+      const newCanPrint = (freshUser.can_print === true || freshUser.can_print === 1 || String(freshUser.can_print).toLowerCase() === 'true');
+      const newCanDownload = (freshUser.can_download === true || freshUser.can_download === 1 || String(freshUser.can_download).toLowerCase() === 'true');
+      const newStatus = (freshUser.status || 'ACTIVE').toUpperCase();
+
+      const sortArr = arr => Array.isArray(arr) ? [...arr].sort() : [];
+      const curTabsSorted = sortArr(u.allowed_tabs).join(',');
+      const newTabsSorted = sortArr(newTabs).join(',');
+
+      const curPrint = Boolean(u.can_print === true || u.can_print === 1 || String(u.can_print).toLowerCase() === 'true');
+      const curDownload = Boolean(u.can_download === true || u.can_download === 1 || String(u.can_download).toLowerCase() === 'true');
+
+      const hasTabsChanged = (curTabsSorted !== newTabsSorted);
+      const hasPrintChanged = (curPrint !== newCanPrint);
+      const hasDownloadChanged = (curDownload !== newCanDownload);
+      const hasStatusChanged = (String(u.status || 'ACTIVE').toUpperCase() !== newStatus);
+
+      if (hasTabsChanged || hasPrintChanged || hasDownloadChanged || hasStatusChanged) {
+        console.log('🔄 Live permissions updated dynamically without hard refresh:', {
+          tabs: newTabs,
+          print: newCanPrint,
+          download: newCanDownload,
+          status: newStatus
+        });
+
+        u.allowed_tabs = newTabs;
+        u.can_print = newCanPrint;
+        u.can_download = newCanDownload;
+        u.status = newStatus;
+
+        // Save to active session storage
+        localStorage.setItem(getSessionStorageKey(), JSON.stringify(u));
+
+        // Re-enforce gatekeeper state immediately
+        enforceGatekeeperState();
+
+        if (hasStatusChanged && newStatus !== 'ACTIVE') {
+          showToast('⚠️ आपका खाता निष्क्रिय (Inactive) किया गया है!');
+        }
+      }
+    }
+  } catch(err) {
+    console.warn('Silent live permission check error:', err);
+  } finally {
+    isCheckingLivePerms = false;
+  }
+}
+
+// 1. Run live check every 15 seconds when portal is in view
+setInterval(() => {
+  if (document.visibilityState !== 'hidden') {
+    checkLivePermissionsUpdate();
+  }
+}, 15000);
+
+// 2. Run check on window focus (fast in-memory check without reloading)
+window.addEventListener('focus', () => {
+  setTimeout(checkLivePermissionsUpdate, 300);
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    setTimeout(checkLivePermissionsUpdate, 300);
+  }
+});
 
 // ==========================================================================
 // WITH-PIC VOTER SLIP GENERATOR ENGINE (मूल पर्ची कटिंग्स + A-Z अंग्रेजी वर्णानुक्रम)
