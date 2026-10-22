@@ -8339,8 +8339,12 @@ function buildWithPicSlipHtml(voter, layout, index) {
                     ('रा.उ.मा.वि. ' + gpVal);
   const boothNo = (bInfo && bInfo.booth_no) || voter.polling_station_no || '1';
 
-  const cName = (cand && cand.candidate_name) ? cand.candidate_name : 'कमला देवी';
-  const cPost = (cand && cand.post) ? cand.post : 'पंचायत समिति सदस्य';
+  let cName = (cand && cand.candidate_name) ? cand.candidate_name : 'कमला देवी';
+  if (cName.includes('(')) cName = cName.split('(')[0].trim();
+  let cPost = (cand && cand.post) ? cand.post : 'पंचायत समिति सदस्य';
+  if (cPost === 'सरपंच' && (cName.includes('कमला') || (cand && (cand.panchayat === 'बांदनवाड़ा' || cand.allowed_panchayats === 'बांदनवाड़ा')))) {
+    cPost = 'पंचायत समिति सदस्य';
+  }
   const cGp = (cand && cand.panchayat) ? cand.panchayat : (voter.gram_panchayat || 'बांदनवाड़ा');
   const cWard = (cand && cand.ward && cand.ward !== 'ALL') ? cand.ward : '';
   const cSlogan = (cand && cand.slogan) ? cand.slogan : 'क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।';
@@ -8364,7 +8368,7 @@ function buildWithPicSlipHtml(voter, layout, index) {
     (cand && s.id === cand.symbol_icon)
   ) || symbols[0];
   const symbolHtml = symObj ? symObj.svg : '✋';
-  const symbolName = (cand && cand.symbol_name) ? cand.symbol_name : 'हाथ';
+  const symbolName = (symObj && (symObj.id === 'hand' || symObj.name_hi.includes('हाथ'))) ? 'हाथ' : ((cand && cand.symbol_name) ? cand.symbol_name : 'हाथ');
 
   const showBanner = (State.withPicShowCandidateBanner !== false);
 
