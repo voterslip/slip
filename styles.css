@@ -5667,14 +5667,158 @@ body.layout-10 .mini-booth-box {
   letter-spacing: 0.5px !important;
 }
 
-/* Bottom Polling Station Box - Prominent & Dark Bold */
+
+/* CANDIDATE CAMPAIGN BANNER (ORIGINAL DESIGN WITH CANDIDATE PHOTO & HAND SYMBOL) */
+.candidate-banner-top {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 3px 5px !important;
+  background: #ffffff !important;
+  border-bottom: 1.5px solid #000000 !important;
+  gap: 6px !important;
+  box-sizing: border-box !important;
+}
+
+.candidate-banner-photo-col {
+  width: 44px !important;
+  height: 52px !important;
+  flex-shrink: 0 !important;
+  border: 1.5px solid #000000 !important;
+  border-radius: 3px !important;
+  overflow: hidden !important;
+  background: #f8fafc !important;
+}
+
+.candidate-banner-photo-col img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  display: block !important;
+}
+
+.candidate-banner-info-col {
+  flex: 1 !important;
+  text-align: center !important;
+  line-height: 1.15 !important;
+  min-width: 0 !important;
+}
+
+.candidate-banner-header {
+  font-size: 5.6pt !important;
+  color: #000000 !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.3px !important;
+}
+
+.candidate-banner-name {
+  font-size: 9.5pt !important;
+  font-weight: 900 !important;
+  color: #000000 !important;
+  margin: 1px 0 !important;
+}
+
+.candidate-banner-post-badge {
+  margin: 1px 0 !important;
+}
+
+.candidate-banner-post {
+  display: inline-block !important;
+  background: #000000 !important;
+  color: #ffffff !important;
+  font-size: 6.2pt !important;
+  font-weight: 800 !important;
+  padding: 1px 5px !important;
+  border-radius: 2px !important;
+  letter-spacing: 0.3px !important;
+}
+
+.candidate-banner-gp {
+  font-size: 6.2pt !important;
+  font-weight: 800 !important;
+  color: #000000 !important;
+  margin-top: 1px !important;
+}
+
+.candidate-banner-time {
+  font-size: 5.8pt !important;
+  font-weight: 700 !important;
+  color: #000000 !important;
+  margin-top: 1px !important;
+}
+
+.candidate-banner-slogan {
+  font-size: 5.4pt !important;
+  font-weight: 600 !important;
+  color: #000000 !important;
+  margin-top: 1px !important;
+  line-height: 1.15 !important;
+}
+
+.candidate-banner-symbol-col {
+  width: 44px !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 2px !important;
+  border: 1.5px solid #000000 !important;
+  border-radius: 3px !important;
+  background: #ffffff !important;
+}
+
+.candidate-banner-symbol-box {
+  width: 34px !important;
+  height: 34px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.candidate-banner-symbol-box svg {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 34px !important;
+  max-height: 34px !important;
+}
+
+.candidate-banner-symbol-label {
+  font-size: 5.6pt !important;
+  font-weight: 900 !important;
+  color: #000000 !important;
+  text-align: center !important;
+  margin-top: 1px !important;
+}
+
+/* PERFORATION CUT LINE */
+.slip-perforation-divider {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  padding: 1.5px 0 !important;
+  background: #ffffff !important;
+  border-top: 1.2px dashed #000000 !important;
+  border-bottom: 1.2px dashed #000000 !important;
+  color: #000000 !important;
+  font-size: 5.8pt !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.3px !important;
+}
+
+.slip-perforation-divider .cut-icon {
+  font-size: 7pt !important;
+}
+
+/* BOTTOM POLLING STATION BOX - FULL NAME UNTRUNCATED, DARK & PROMINENT */
 .with-pic-polling-box-bw {
   background: #f1f5f9 !important;
   color: #000000 !important;
   border: 1.5px solid #000000 !important;
   padding: 3px 6px !important;
   font-size: 7.2pt !important;
-  line-height: 1.35 !important;
+  line-height: 1.3 !important;
   box-sizing: border-box !important;
   margin-top: 2px !important;
 }
@@ -5684,7 +5828,7 @@ body.layout-10 .mini-booth-box {
   justify-content: space-between !important;
   align-items: center !important;
   font-weight: 800 !important;
-  font-size: 7.5pt !important;
+  font-size: 7.4pt !important;
   color: #000000 !important;
   border-bottom: 1.2px solid #000000 !important;
   padding-bottom: 2px !important;
@@ -5695,7 +5839,9 @@ body.layout-10 .mini-booth-box {
   font-weight: 800 !important;
   font-size: 7.2pt !important;
   color: #000000 !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  word-break: break-word !important;
+  overflow: visible !important;
+  line-height: 1.25 !important;
 }
