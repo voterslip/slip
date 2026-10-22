@@ -1,0 +1,25 @@
+{
+  "master_portal": {
+    "name": "मास्टर एडमिन पोर्टल (Master Control)",
+    "repo": "https://github.com/voterslip/slip",
+    "url": "https://voterslip.github.io/slip/",
+    "status": "ACTIVE",
+    "last_sync": "2026-10-22 22:45"
+  },
+  "voter_portal": {
+    "name": "मतदाता पर्ची एवं सचित्र पर्ची पोर्टल (Voter Slip & With-Pic Portal)",
+    "repo": "https://github.com/voterslip/slip",
+    "url": "https://voterslip.github.io/slip/",
+    "status": "ACTIVE",
+    "modules": {
+      "search": true,
+      "alpha": true,
+      "slips": true,
+      "with_pic_slips": true,
+      "candidate_edit": true
+    },
+    "allowed_panchayats": "ALL",
+    "default_with_pic_batch": 18,
+    "default_with_pic_sort": "alpha"
+  }
+}
