@@ -5266,8 +5266,8 @@ body.layout-10 .mini-booth-box {
 
 /* Candidate Banner on Top (For 9-print & optional for others) */
 .with-pic-cand-banner {
-  background: #0f172a !important;
-  color: #ffffff !important;
+  background: #ffffff !important;
+  color: #000000 !important;
   padding: 4px 6px !important;
   display: flex !important;
   align-items: center !important;
@@ -5278,8 +5278,8 @@ body.layout-10 .mini-booth-box {
 }
 
 .with-pic-cand-banner.banner-theme-bw {
-  background: #000000 !important;
-  color: #ffffff !important;
+  background: #ffffff !important;
+  color: #000000 !important;
 }
 
 .with-pic-cand-symbol-box {
@@ -5546,4 +5546,163 @@ body.layout-10 .mini-booth-box {
     font-weight: 800 !important;
     font-size: 8pt !important;
   }
+}
+
+/* ==========================================================================
+   PURE B&W PRINT-FRIENDLY WITH-PIC STYLES (NO DARK BACKGROUND)
+   ========================================================================== */
+
+.with-pic-cand-banner-bw {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1.5px solid #000000 !important;
+  border-bottom: none !important;
+  padding: 3px 6px !important;
+  box-sizing: border-box !important;
+  line-height: 1.25 !important;
+}
+
+.cand-bw-header-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  font-size: 6.8pt !important;
+  font-weight: 700 !important;
+  color: #000000 !important;
+  border-bottom: 1px dotted #000000 !important;
+  padding-bottom: 1px !important;
+  margin-bottom: 2px !important;
+}
+
+.cand-bw-main-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.cand-bw-symbol-col {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  width: 32px !important;
+  flex-shrink: 0 !important;
+}
+
+.cand-bw-symbol-box {
+  width: 28px !important;
+  height: 28px !important;
+  border: 1px solid #000000 !important;
+  border-radius: 3px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #ffffff !important;
+  padding: 1px !important;
+}
+
+.cand-bw-symbol-box svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.cand-bw-symbol-label {
+  font-size: 5.5pt !important;
+  font-weight: 800 !important;
+  color: #000000 !important;
+  margin-top: 1px !important;
+  text-align: center !important;
+}
+
+.cand-bw-info-col {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+.cand-bw-name {
+  font-size: 8.5pt !important;
+  font-weight: 800 !important;
+  color: #000000 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.cand-bw-post {
+  font-size: 6.8pt !important;
+  font-weight: 700 !important;
+  color: #000000 !important;
+}
+
+.cand-bw-slogan {
+  font-size: 6.2pt !important;
+  font-style: italic !important;
+  color: #000000 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.cand-bw-time {
+  font-size: 6pt !important;
+  font-weight: 700 !important;
+  color: #000000 !important;
+  border-top: 1px dotted #94a3b8 !important;
+  margin-top: 1px !important;
+  padding-top: 1px !important;
+}
+
+/* Scissors Perforation Line */
+.with-pic-perforation-divider {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 5.8pt !important;
+  font-weight: 700 !important;
+  color: #000000 !important;
+  background: #ffffff !important;
+  border-left: 1.5px solid #000000 !important;
+  border-right: 1.5px solid #000000 !important;
+  border-bottom: 1.5px dashed #000000 !important;
+  padding: 1px 0 !important;
+  letter-spacing: 0.5px !important;
+}
+
+/* Bottom Polling Station Box */
+.with-pic-polling-box-bw {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1.5px solid #000000 !important;
+  border-top: 1.5px dashed #000000 !important;
+  padding: 2.5px 5px !important;
+  font-size: 6.5pt !important;
+  line-height: 1.3 !important;
+  box-sizing: border-box !important;
+}
+
+.polling-box-stn-row {
+  font-weight: 700 !important;
+  color: #000000 !important;
+  border-bottom: 1px dotted #cbd5e1 !important;
+  padding-bottom: 1px !important;
+  margin-bottom: 1px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.polling-box-room-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  font-size: 6.2pt !important;
+  color: #000000 !important;
+  margin-bottom: 1px !important;
+}
+
+.polling-box-voter-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  font-size: 6.2pt !important;
+  color: #000000 !important;
 }

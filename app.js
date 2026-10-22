@@ -8328,30 +8328,46 @@ function buildWithPicSlipHtml(voter, layout, index) {
   }
   const folder = pEn || 'Badgaon';
 
-  // Candidate Data (from Profile or defaults)
+  // Candidate Data (from currentCandidate, currentUser, or defaults)
   let cand = State.currentCandidate;
   if (!cand && State.currentUser) {
-    const cached = localStorage.getItem('candidate_profile_' + (State.currentUser.id || State.currentUser.username));
-    if (cached) {
-      try { cand = JSON.parse(cached); State.currentCandidate = cand; } catch(e) {}
+    if (State.currentUser.candidate) {
+      cand = State.currentUser.candidate;
+    } else {
+      const cached = localStorage.getItem('candidate_profile_' + (State.currentUser.id || State.currentUser.username));
+      if (cached) {
+        try { cand = JSON.parse(cached); State.currentCandidate = cand; } catch(e) {}
+      }
     }
   }
 
-  const candName = (cand && cand.candidate_name) ? cand.candidate_name : 'समर्थित प्रत्याशी';
-  const candPost = (cand && cand.post) ? cand.post : 'सरपंच';
-  const candSlogan = (cand && cand.slogan) ? cand.slogan : 'आपका अमूल्य मत, हमारा संकल्प';
-  const candDate = (cand && cand.election_date) ? cand.election_date : '15 अक्टूबर 2026';
-  const candTime = (cand && cand.election_time) ? cand.election_time : 'प्रातः 7:00 से सायं 5:00';
+  // Polling Station / Booth Details (स्कूल का नाम, मतदान केंद्र क्र., कमरा नं.)
+  let bInfo = (typeof getBoothForVoter === 'function') ? getBoothForVoter(voter) : null;
+  const boothName = (bInfo && (bInfo.booth_name_hi || bInfo.name_hi || bInfo.name)) || 
+                    voter.polling_station_name || 
+                    ('रा.उ.मा.वि. ' + (voter.gram_panchayat || 'भिनाय'));
+  const boothNo = (bInfo && bInfo.booth_no) || voter.polling_station_no || '1';
+  let roomNo = (bInfo && (bInfo.room_no || bInfo.room)) ? String(bInfo.room_no) : `कमरा नं.-0${boothNo}`;
+  if (!roomNo.includes('कमरा')) roomNo = `कमरा नं.-${roomNo}`;
 
-  // Symbol SVG
-  let symbolSvg = '';
+  const cName = (cand && cand.candidate_name) ? cand.candidate_name : 'कमला देवी';
+  const cPost = (cand && cand.post) ? cand.post : 'सरपंच';
+  const cGp = (cand && cand.panchayat) ? cand.panchayat : (voter.gram_panchayat || 'कनईकला');
+  const cWard = (cand && cand.ward) ? cand.ward : '';
+  const cSlogan = (cand && cand.slogan) ? cand.slogan : 'ग्राम पंचायत के सर्वांगीण विकास हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।';
+  const cDate = (cand && cand.election_date) ? cand.election_date : '15 अक्टूबर 2026';
+  const cTime = (cand && cand.election_time) ? cand.election_time : 'प्रातः 7:00 बजे से सायं 5:00 बजे तक';
+
+  // Symbol SVG / Photo
+  let symbolHtml = '';
   if (cand && cand.photo_url) {
-    symbolSvg = `<img src="${cand.photo_url}" alt="Candidate" />`;
+    symbolHtml = `<img src="${cand.photo_url}" alt="Candidate" style="width:100%; height:100%; object-fit:cover; border-radius:3px;" />`;
   } else {
     const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
     const symObj = symbols.find(s => cand && (s.id === cand.symbol_name || s.name_hi.includes(cand.symbol_name || ''))) || symbols[0];
-    symbolSvg = symObj ? symObj.svg : '🗳️';
+    symbolHtml = symObj ? symObj.svg : '🗳️';
   }
+  const symbolName = (cand && cand.symbol_name) ? cand.symbol_name : 'उगता सूरज';
 
   const showBanner = (State.withPicShowCandidateBanner !== false);
 
@@ -8359,21 +8375,52 @@ function buildWithPicSlipHtml(voter, layout, index) {
     return `
       <div class="with-pic-thermal-card print-with-pic-thermal-item">
         ${showBanner ? `
-        <div class="with-pic-cand-banner banner-theme-bw">
-          <div class="with-pic-cand-symbol-box">${symbolSvg}</div>
-          <div class="with-pic-cand-info">
-            <div class="with-pic-cand-title">🙏 ${candName} (${candPost})</div>
-            <div class="with-pic-cand-sub">${candSlogan}</div>
-            <div class="with-pic-cand-date">मतदान: ${candDate}</div>
+        <!-- TOP CANDIDATE BANNER (100% PURE B&W, NO DARK BACKGROUND) -->
+        <div class="with-pic-cand-banner-bw">
+          <div class="cand-bw-header-row">
+            <span>।। श्री गणेशाय नमः ।।</span>
+            <span>🙏 विनम्र अपील 🙏</span>
           </div>
+          <div class="cand-bw-main-row">
+            <div class="cand-bw-symbol-col">
+              <div class="cand-bw-symbol-box">${symbolHtml}</div>
+              <div class="cand-bw-symbol-label">${symbolName.split(' ')[0]}</div>
+            </div>
+            <div class="cand-bw-info-col">
+              <div class="cand-bw-name"><strong>${cName}</strong></div>
+              <div class="cand-bw-post">${cPost} प्रत्याशी • पं.: <strong>${cGp}</strong> ${cWard ? `(वार्ड ${cWard})` : ''}</div>
+              <div class="cand-bw-time">📅 मतदान: <strong>${cDate}</strong> (${cTime})</div>
+            </div>
+          </div>
+          <div class="cand-bw-slogan">${cSlogan}</div>
+        </div>
+        <div class="with-pic-perforation-divider">
+          <span>✂️ --- यहाँ से काटकर मतदाता को दें (काट कर अलग करें) --- ✂️</span>
         </div>` : ''}
+
+        <!-- VOTER SLIP CUTTING (FULL COLOR PIC) -->
         <div class="with-pic-cut-wrapper" style="padding:4px 0;">
           <img src="${imgUrl}" alt="Slip Cut" class="with-pic-cut-img" loading="lazy" onerror="onWithPicImgError(this, '${folder}', '${wNum}', '${serialNo}')" />
         </div>
-        <div class="with-pic-footer" style="background:#fff; border-top:1px dashed #000;">
-          <span>वार्ड ${voter.ward_no} • क्र. ${voter.serial_no}</span>
-          <span>${voter.voter_name_en || voter.ne || voter.voter_name || ''}</span>
-          <span>EPIC: ${voter.epic_no || ''}</span>
+
+        <!-- BOTTOM POLLING LOCATION & ROOM NUMBER (100% B&W) -->
+        <div class="with-pic-polling-box-bw">
+          <div class="polling-box-stn-row">
+            🏫 <strong>मतदान का स्थान:</strong> ${boothName}
+          </div>
+          <div class="polling-box-room-row">
+            <span><strong>मतदान केंद्र क्र.:</strong> ${boothNo}</span>
+            <span>•</span>
+            <span><strong>${roomNo}</strong></span>
+            <span>•</span>
+            <span>वार्ड: <strong>${voter.ward_no}</strong></span>
+            <span>•</span>
+            <span>क्र.: <strong>${voter.serial_no}</strong></span>
+          </div>
+          <div class="polling-box-voter-row">
+            <span>मतदाता: <strong>${voter.voter_name || ''} ${voter.voter_name_en ? `(${voter.voter_name_en})` : ''}</strong></span>
+            <span>EPIC: <strong>${voter.epic_no || '-'}</strong></span>
+          </div>
         </div>
       </div>
     `;
@@ -8382,21 +8429,54 @@ function buildWithPicSlipHtml(voter, layout, index) {
   return `
     <div class="with-pic-card card-layout-${layout}">
       ${showBanner ? `
-      <div class="with-pic-cand-banner">
-        <div class="with-pic-cand-symbol-box">${symbolSvg}</div>
-        <div class="with-pic-cand-info">
-          <div class="with-pic-cand-title">🙏 ${candName} (${candPost})</div>
-          <div class="with-pic-cand-sub">${candSlogan}</div>
-          <div class="with-pic-cand-date">मतदान: ${candDate} • ${candTime}</div>
+      <!-- TOP CANDIDATE BANNER (100% PURE B&W, NO DARK BACKGROUND) -->
+      <div class="with-pic-cand-banner-bw">
+        <div class="cand-bw-header-row">
+          <span>।। श्री गणेशाय नमः ।।</span>
+          <span style="font-weight:800;">🙏 विनम्र अपील 🙏</span>
         </div>
+        <div class="cand-bw-main-row">
+          <div class="cand-bw-symbol-col">
+            <div class="cand-bw-symbol-box">${symbolHtml}</div>
+            <div class="cand-bw-symbol-label">${symbolName.split(' ')[0]}</div>
+          </div>
+          <div class="cand-bw-info-col">
+            <div class="cand-bw-name"><strong>${cName}</strong> (${cPost} प्रत्याशी)</div>
+            <div class="cand-bw-post">ग्राम पंचायत: <strong>${cGp}</strong> ${cWard ? `• वार्ड संख्या: ${cWard}` : ''}</div>
+            <div class="cand-bw-slogan">${cSlogan}</div>
+            <div class="cand-bw-time">📅 मतदान दिनांक: <strong>${cDate}</strong> | ⏰ समय: <strong>${cTime}</strong></div>
+          </div>
+        </div>
+      </div>
+      <div class="with-pic-perforation-divider">
+        <span class="cut-icon">✂️</span>
+        <span>---------------- यहाँ से काटकर मतदाता को दें (काट कर अलग करें) ----------------</span>
+        <span class="cut-icon">✂️</span>
       </div>` : ''}
+
+      <!-- MIDDLE: VOTER SLIP CUTTING (ORIGINAL COLOR IMAGE) -->
       <div class="with-pic-cut-wrapper">
         <img src="${imgUrl}" alt="Voter Slip Cut" class="with-pic-cut-img" loading="lazy" onerror="onWithPicImgError(this, '${folder}', '${wNum}', '${serialNo}')" />
       </div>
-      <div class="with-pic-footer">
-        <span>वार्ड ${voter.ward_no} • सरल क्र. ${voter.serial_no}</span>
-        <span style="font-size:7pt; color:#1e3a8a;">🔤 ${voter.voter_name_en || voter.ne || voter.voter_name || ''}</span>
-        <span>${voter.epic_no || ''}</span>
+
+      <!-- BOTTOM: VOTING LOCATION, SCHOOL NAME & ROOM NUMBER BOX (100% B&W) -->
+      <div class="with-pic-polling-box-bw">
+        <div class="polling-box-stn-row">
+          🏫 <strong>मतदान का स्थान:</strong> ${boothName}
+        </div>
+        <div class="polling-box-room-row">
+          <span><strong>मतदान केंद्र संख्या:</strong> ${boothNo}</span>
+          <span>•</span>
+          <span><strong>${roomNo}</strong></span>
+          <span>•</span>
+          <span>वार्ड: <strong>${voter.ward_no}</strong></span>
+          <span>•</span>
+          <span>सरल क्र.: <strong>${voter.serial_no}</strong></span>
+        </div>
+        <div class="polling-box-voter-row">
+          <span>नाम: <strong>${voter.voter_name || ''}</strong> <span style="font-size:6.8pt; color:#1e3a8a;">(${voter.voter_name_en || voter.ne || ''})</span></span>
+          <span>पहचान पत्र (EPIC): <strong>${voter.epic_no || '-'}</strong></span>
+        </div>
       </div>
     </div>
   `;
