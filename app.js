@@ -2529,8 +2529,10 @@ function enforceGatekeeperState() {
     });
   }
 
-  // Load candidate profile if not loaded
-  if (!State.currentCandidate) {
+  // Load candidate profile if available from user configuration or localStorage
+  if (u.candidate) {
+    State.currentCandidate = u.candidate;
+  } else if (!State.currentCandidate) {
     const cached = localStorage.getItem('candidate_profile_' + (u.id || u.username));
     if (cached) {
       try { State.currentCandidate = JSON.parse(cached); } catch(e) {}
@@ -3447,7 +3449,7 @@ function isCandidateSlipAllowedForVoter(voter) {
   const isCandidateRole = (u.role === 'CANDIDATE' || u.type === 'CANDIDATE' || (u.id && String(u.id).startsWith('cand_')) || u.candidate_mode === 'user_edit' || u.candidate_mode === 'active');
   if (!isCandidateRole) return false;
 
-  let cand = State.currentCandidate || u.candidate;
+  let cand = u.candidate || State.currentCandidate;
   if (!cand) {
     try {
       cand = JSON.parse(localStorage.getItem('candidate_profile_' + (u.id || u.username)) || 'null');
@@ -8328,16 +8330,12 @@ function buildWithPicSlipHtml(voter, layout, index) {
   }
   const folder = pEn || 'Badgaon';
 
-  // Candidate Data (from currentCandidate, currentUser, or defaults)
-  let cand = State.currentCandidate;
+  // Candidate Data (from currentUser, currentCandidate, or defaults)
+  let cand = (State.currentUser && State.currentUser.candidate) ? State.currentUser.candidate : State.currentCandidate;
   if (!cand && State.currentUser) {
-    if (State.currentUser.candidate) {
-      cand = State.currentUser.candidate;
-    } else {
-      const cached = localStorage.getItem('candidate_profile_' + (State.currentUser.id || State.currentUser.username));
-      if (cached) {
-        try { cand = JSON.parse(cached); State.currentCandidate = cand; } catch(e) {}
-      }
+    const cached = localStorage.getItem('candidate_profile_' + (State.currentUser.id || State.currentUser.username));
+    if (cached) {
+      try { cand = JSON.parse(cached); State.currentCandidate = cand; } catch(e) {}
     }
   }
 
