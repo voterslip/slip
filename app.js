@@ -8358,17 +8358,18 @@ function buildWithPicSlipHtml(voter, layout, index) {
     cPhoto = cand.photo_url;
   }
 
-  // 2. Candidate Election Symbol (Restore Hand Symbol SVG)
-  const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
-  const symNameLower = (cand && cand.symbol_name ? String(cand.symbol_name).toLowerCase() : 'हाथ');
-  const symObj = symbols.find(s => 
-    s.id === 'hand' || s.id === symNameLower || 
-    s.name_hi.includes(symNameLower) || 
-    s.name_hi.includes('हाथ') || 
-    (cand && s.id === cand.symbol_icon)
-  ) || symbols[0];
-  const symbolHtml = symObj ? symObj.svg : '✋';
-  const symbolName = (symObj && (symObj.id === 'hand' || symObj.name_hi.includes('हाथ'))) ? 'हाथ' : ((cand && cand.symbol_name) ? cand.symbol_name : 'हाथ');
+  // 2. Candidate Election Symbol (Exact from Jit repo symbols_master.js)
+  const symbolName = (cand && cand.symbol_name) ? cand.symbol_name : 'हाथ';
+  let symbolHtml = '';
+  if (typeof getSymbolSvgById === 'function') {
+    symbolHtml = getSymbolSvgById(symbolName);
+  }
+  if (!symbolHtml) {
+    const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
+    const symObj = symbols.find(s => s.id === 'hand' || s.name_hi.includes('हाथ')) || symbols[0];
+    symbolHtml = symObj ? symObj.svg : '✋';
+  }
+  const symbolDisplayName = (symbolName.includes('हाथ') || symbolName.toLowerCase().includes('hand')) ? 'हाथ' : symbolName.split(' ')[0];
 
   const showBanner = (State.withPicShowCandidateBanner !== false);
 
@@ -8391,7 +8392,7 @@ function buildWithPicSlipHtml(voter, layout, index) {
           </div>
           <div class="candidate-banner-symbol-col">
             <div class="candidate-banner-symbol-box">${symbolHtml}</div>
-            <div class="candidate-banner-symbol-label">${symbolName.split(' ')[0]}</div>
+            <div class="candidate-banner-symbol-label">${symbolDisplayName}</div>
           </div>
         </div>
         <div class="slip-perforation-divider">
@@ -8437,7 +8438,7 @@ function buildWithPicSlipHtml(voter, layout, index) {
         </div>
         <div class="candidate-banner-symbol-col">
           <div class="candidate-banner-symbol-box">${symbolHtml}</div>
-          <div class="candidate-banner-symbol-label">${symbolName.split(' ')[0]}</div>
+          <div class="candidate-banner-symbol-label">${symbolDisplayName}</div>
         </div>
       </div>
       <div class="slip-perforation-divider">
