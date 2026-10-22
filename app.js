@@ -2245,6 +2245,7 @@ async function ensureMasterDirectoryLoaded() {
 }
 
 function getPortalContext() {
+  if (window.PORTAL_TYPE) return window.PORTAL_TYPE.toLowerCase();
   const url = new URL(window.location.href);
   const pParam = url.searchParams.get('portal');
   if (pParam) return pParam.toLowerCase();
@@ -2255,10 +2256,10 @@ function getPortalContext() {
   if (path.includes('blo-portal') || path.includes('/blo') || host.includes('blo')) {
     return 'blo';
   }
-  if (path.includes('voter-portal') || path.includes('/voter') || host.includes('voter')) {
+  if (path.includes('voter-portal') || path.includes('/voter') || host.includes('voter') || path.includes('/slip')) {
     return 'voter';
   }
-  return 'master';
+  return 'voter';
 }
 
 function getSessionStorageKey() {
@@ -2507,8 +2508,8 @@ function enforceGatekeeperState() {
 
   // Candidate Bulk Slip options on voter-portal: keep 9, 21, and Thermal
   // On other portals (PAN, BLO): KEEP ALL LAYOUTS (12, 15, 18, 20, 21, 9, 10, Thermal) VISIBLE AND SELECTABLE!
-  const isVoterRepo = (window.PORTAL_TYPE === 'voter') || 
-                      (window.location && window.location.href && window.location.href.toLowerCase().includes('/voter-portal'));
+  const isVoterRepo = (window.PORTAL_TYPE === 'voter' || window.PORTAL_TYPE === 'voterslip') || 
+                      (window.location && window.location.href && (window.location.href.toLowerCase().includes('/voter-portal') || window.location.href.toLowerCase().includes('/slip')));
 
   if (isVoterRepo && isCandidateUser) {
     ['layoutCard10', 'layoutCard12', 'layoutCard15', 'layoutCard18', 'layoutCard20'].forEach(id => {
@@ -3438,8 +3439,8 @@ function shareVoterSlipWhatsAppByIndex(index) {
 function isCandidateSlipAllowedForVoter(voter) {
   // STRICT REQUIREMENT: Candidate branding is strictly limited to voter-portal repo!
   // On all other repositories (PAN / Master Admin, BLO Portal), candidate details must NEVER appear.
-  const isVoterRepo = (window.PORTAL_TYPE === 'voter') || 
-                      (window.location && window.location.href && window.location.href.toLowerCase().includes('/voter-portal'));
+  const isVoterRepo = (window.PORTAL_TYPE === 'voter' || window.PORTAL_TYPE === 'voterslip') || 
+                      (window.location && window.location.href && (window.location.href.toLowerCase().includes('/voter-portal') || window.location.href.toLowerCase().includes('/slip')));
   if (!isVoterRepo) {
     return false;
   }
@@ -5802,8 +5803,8 @@ function buildExactOfficialSlipInnerHtml(voter) {
 window.buildOfficialSlipHtml = function(voter, layout, theme) {
   // STRICT RULE: On all other portals (PAN, BLO, etc.), candidate details NEVER appear on any layout (9, 10, 12, 15, 18, 20, 21, thermal)!
   // Always render pure clean official voter slip (identical to 21-slip format).
-  const isVoterRepo = (window.PORTAL_TYPE === 'voter') || 
-                      (window.location && window.location.href && window.location.href.toLowerCase().includes('/voter-portal'));
+  const isVoterRepo = (window.PORTAL_TYPE === 'voter' || window.PORTAL_TYPE === 'voterslip') || 
+                      (window.location && window.location.href && (window.location.href.toLowerCase().includes('/voter-portal') || window.location.href.toLowerCase().includes('/slip')));
 
   if (!isVoterRepo) {
     return buildExactOfficialSlipInnerHtml(voter);
@@ -8358,18 +8359,18 @@ function buildWithPicSlipHtml(voter, layout, index) {
     cPhoto = cand.photo_url;
   }
 
-  // 2. Candidate Election Symbol (Exact from Jit repo symbols_master.js)
-  const symbolName = (cand && cand.symbol_name) ? cand.symbol_name : 'हाथ';
+  // 2. Candidate Election Symbol (Exact from official SEC symbols_master.js)
+  const symbolName = (cand && (cand.symbol_name || cand.symbol_icon)) ? (cand.symbol_name || cand.symbol_icon) : 'उगता सूरज';
   let symbolHtml = '';
   if (typeof getSymbolSvgById === 'function') {
     symbolHtml = getSymbolSvgById(symbolName);
   }
   if (!symbolHtml) {
     const symbols = window.OFFICIAL_ELECTION_SYMBOLS || [];
-    const symObj = symbols.find(s => s.id === 'hand' || s.name_hi.includes('हाथ')) || symbols[0];
-    symbolHtml = symObj ? symObj.svg : '✋';
+    const symObj = symbols.find(s => s.id === (cand && cand.symbol_icon) || (cand && cand.symbol_name && s.name_hi.includes(cand.symbol_name))) || symbols[0];
+    symbolHtml = symObj ? symObj.svg : '';
   }
-  const symbolDisplayName = (symbolName.includes('हाथ') || symbolName.toLowerCase().includes('hand')) ? 'हाथ' : symbolName.split(' ')[0];
+  const symbolDisplayName = (cand && cand.symbol_name) ? cand.symbol_name.split(' ')[0] : 'उगता सूरज';
 
   const showBanner = (State.withPicShowCandidateBanner !== false);
 
