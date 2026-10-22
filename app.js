@@ -8312,20 +8312,16 @@ function onWithPicImgError(img, folder, wNum, serialNo) {
   }
 }
 
-/**
- * Builds each voter slip cutting HTML with Candidate Banner
- */
 function buildWithPicSlipHtml(voter, layout, index) {
-  const pEn = voter.panchayat_en || (voter.gram_panchayat ? getPanchayatEnglishName(voter.gram_panchayat) : 'Badgaon');
-  const wNum = String(voter.ward_no || '1').trim();
-  const serialNo = String(voter.serial_no || index + 1).trim();
-
-  // Multi-Tier Bulletproof Slip Cutting URL
-  let imgUrl = `./voter_slips/${pEn}/ward_${wNum}/${serialNo}.webp`;
-  if (window.location.protocol === 'file:') {
-    imgUrl = `./voter_slips/${pEn}/ward_${wNum}/${serialNo}.webp`;
-  }
-  const folder = pEn || 'Badgaon';
+  const imgUrl = getWithPicSlipCutUrl(voter, index);
+  const rawWard = String(voter.ward_no || voter.ward || voter.w || '1').replace(/\D/g, '');
+  const wardNo = parseInt(rawWard, 10) || 1;
+  const rawSerial = String(voter.serial_no || voter.serial || voter.serialNo || voter.s || (index + 1)).replace(/\D/g, '');
+  const serialNo = parseInt(rawSerial, 10) || (index + 1);
+  const wNum = String(wardNo).padStart(2, '0');
+  const folder = voter.panchayat_en || (voter.gram_panchayat ? getPanchayatEnglishName(voter.gram_panchayat) : 'Bandanwara');
+  const wardVal = voter.ward_no || voter.ward || voter.w || '1';
+  const gpVal = voter.gram_panchayat || voter.gp_hi || (cand && cand.panchayat) || 'बांदनवाड़ा';
 
   // Candidate Data (from currentUser, currentCandidate, or defaults)
   let cand = (State.currentUser && State.currentUser.candidate) ? State.currentUser.candidate : State.currentCandidate;
@@ -8340,7 +8336,7 @@ function buildWithPicSlipHtml(voter, layout, index) {
   let bInfo = (typeof getBoothForVoter === 'function') ? getBoothForVoter(voter) : null;
   const boothName = (bInfo && (bInfo.booth_name || bInfo.booth_name_hi || bInfo.name_hi || bInfo.name)) || 
                     voter.polling_station_name || 
-                    ('रा.उ.मा.वि. ' + (voter.gram_panchayat || 'बांदनवाड़ा'));
+                    ('रा.उ.मा.वि. ' + gpVal);
   const boothNo = (bInfo && bInfo.booth_no) || voter.polling_station_no || '1';
 
   const cName = (cand && cand.candidate_name) ? cand.candidate_name : 'कमला देवी';
@@ -8407,7 +8403,7 @@ function buildWithPicSlipHtml(voter, layout, index) {
         <div class="with-pic-polling-box-bw">
           <div class="polling-box-stn-head">
             <span><strong>मतदान केंद्र क्र.: ${boothNo}</strong></span>
-            <span><strong>पं.: ${voter.gram_panchayat || cGp} • वार्ड: ${voter.ward_no}</strong></span>
+            <span><strong>पं.: ${gpVal} • वार्ड: ${wardVal}</strong></span>
           </div>
           <div class="polling-box-stn-name">
             <strong>मतदान केंद्र:</strong> ${boothName}
@@ -8455,7 +8451,7 @@ function buildWithPicSlipHtml(voter, layout, index) {
       <div class="with-pic-polling-box-bw">
         <div class="polling-box-stn-head">
           <span><strong>मतदान केंद्र संख्या: ${boothNo}</strong></span>
-          <span><strong>पं.: ${voter.gram_panchayat || cGp} • वार्ड: ${voter.ward_no}</strong></span>
+          <span><strong>पं.: ${gpVal} • वार्ड: ${wardVal}</strong></span>
         </div>
         <div class="polling-box-stn-name">
           <strong>मतदान केंद्र:</strong> ${boothName}
