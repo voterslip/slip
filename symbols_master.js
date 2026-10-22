@@ -5,6 +5,13 @@
 
 window.OFFICIAL_ELECTION_SYMBOLS = [
   {
+    id: "hand",
+    name_hi: "हाथ (Hand)",
+    name_en: "Hand",
+    svg: `<svg viewBox="0 0 100 100" class="symbol-svg"><path d="M42,16 C42,12 47,12 47,16 L47,42 L52,14 C52,10 57,10 57,14 L57,42 L63,16 C63,12 68,12 68,16 L68,44 L73,24 C73,20 78,20 78,24 L78,58 C78,76 68,88 50,88 C34,88 26,76 26,60 L26,46 C26,41 32,41 32,46 L32,56 L42,16 Z" fill="#ffffff" stroke="#000000" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+  },
+
+  {
     id: "sun",
     name_hi: "उगता सूरज (Rising Sun)",
     name_en: "Rising Sun",

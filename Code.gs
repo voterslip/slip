@@ -60,8 +60,8 @@ function initialSetup() {
     // 1. Super Admin: Full Control
     ["admin", "admin2026", "मुख्य व्यवस्थापक (Super Admin)", "7023293283", "SUPER_ADMIN", true, "ALL", "ALL", true, true, true, true, true, true, true, nowStr],
     // 2. Candidate Kamala: Sarpanch Kanaikalan (Full with-pic slip)
-    ["kamala", "bhinai2026", "कमला देवी (सरपंच प्रत्याशी - कनईकला)", "9876543210", "CANDIDATE", true, "कनईकला", "ALL", true, true, true, true, true, true, true, nowStr],
-    ["kamla", "bhinai2026", "कमला देवी (सरपंच प्रत्याशी - कनईकला)", "9876543210", "CANDIDATE", true, "कनईकला", "ALL", true, true, true, true, true, true, true, nowStr],
+    ["kamala", "bhinai2026", "कमला देवी (पंचायत समिति सदस्य प्रत्याशी - बांदनवाड़ा)", "9876543210", "CANDIDATE", true, "बांदनवाड़ा", "ALL", true, true, true, true, true, true, true, nowStr],
+    ["kamla", "bhinai2026", "कमला देवी (पंचायत समिति सदस्य प्रत्याशी - बांदनवाड़ा)", "9876543210", "CANDIDATE", true, "बांदनवाड़ा", "ALL", true, true, true, true, true, true, true, nowStr],
     // 3. Candidate Ward Panch
     ["ward_panch", "ward2026", "रामप्रसाद (वार्ड पंच - बड़गांव)", "9876543211", "CANDIDATE", true, "बड़गांव", "1", true, true, true, true, true, true, true, nowStr]
   ];

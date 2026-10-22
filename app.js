@@ -8351,8 +8351,8 @@ function buildWithPicSlipHtml(voter, layout, index) {
   if (!roomNo.includes('कमरा')) roomNo = `कमरा नं.-${roomNo}`;
 
   const cName = (cand && cand.candidate_name) ? cand.candidate_name : 'कमला देवी';
-  const cPost = (cand && cand.post) ? cand.post : 'सरपंच';
-  const cGp = (cand && cand.panchayat) ? cand.panchayat : (voter.gram_panchayat || 'कनईकला');
+  const cPost = (cand && cand.post) ? cand.post : 'पंचायत समिति सदस्य';
+  const cGp = (cand && cand.panchayat) ? cand.panchayat : (voter.gram_panchayat || 'बांदनवाड़ा');
   const cWard = (cand && cand.ward) ? cand.ward : '';
   const cSlogan = (cand && cand.slogan) ? cand.slogan : 'ग्राम पंचायत के सर्वांगीण विकास हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।';
   const cDate = (cand && cand.election_date) ? cand.election_date : '15 अक्टूबर 2026';
@@ -8367,7 +8367,7 @@ function buildWithPicSlipHtml(voter, layout, index) {
     const symObj = symbols.find(s => cand && (s.id === cand.symbol_name || s.name_hi.includes(cand.symbol_name || ''))) || symbols[0];
     symbolHtml = symObj ? symObj.svg : '🗳️';
   }
-  const symbolName = (cand && cand.symbol_name) ? cand.symbol_name : 'उगता सूरज';
+  const symbolName = (cand && cand.symbol_name) ? cand.symbol_name : 'हाथ';
 
   const showBanner = (State.withPicShowCandidateBanner !== false);
 
