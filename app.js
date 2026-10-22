@@ -5657,49 +5657,108 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
   const bInfo = getBoothForVoter(voter);
   const boothName = (bInfo && (bInfo.name || bInfo.name_hi)) || voter.polling_station_name || 'राजकीय उच्च माध्यमिक विद्यालय कमरा नं.-01 भिनाय';
   const boothNo = (bInfo && bInfo.booth_no) || voter.polling_station_no || '1';
-  const electionDate = candidateData.election_date || '15 अक्टूबर 2026';
-  const electionTime = candidateData.election_time || 'प्रातः 7:00 बजे से सायं 5:00 बजे तक';
+  const electionDate = candidateData.election_date || (typeof getGlobalElectionDate === 'function' ? getGlobalElectionDate() : '15 अक्टूबर 2026');
+  const electionTime = candidateData.election_time || (typeof getGlobalElectionTime === 'function' ? getGlobalElectionTime() : 'प्रातः 7:00 बजे से सायं 5:00 बजे तक');
 
   const cName = candidateData.candidate_name || 'प्रत्याशी';
   const cPost = candidateData.post || 'सरपंच';
   const cGp = candidateData.panchayat || voter.gram_panchayat;
   const cWard = candidateData.ward || voter.ward_no;
   const cSymbolName = candidateData.symbol_name || 'उगता सूरज';
-  const cSymbolSvg = candidateData.symbol_svg || (window.OFFICIAL_ELECTION_SYMBOLS && window.OFFICIAL_ELECTION_SYMBOLS[0].svg);
-  const cPhoto = candidateData.photo_url || 'https://api.dicebear.com/7.x/identicon/svg?seed=candidate';
+  
+  const cCustomSymbolUrl = candidateData.custom_symbol_url || candidateData.custom_symbol || candidateData.symbol_url;
+  let cSymbolSvg = candidateData.symbol_svg;
+  if (cCustomSymbolUrl && String(cCustomSymbolUrl).trim().length > 5) {
+    if (cCustomSymbolUrl.trim().startsWith('<svg')) {
+      cSymbolSvg = cCustomSymbolUrl;
+    } else {
+      const safeSrc = cCustomSymbolUrl.replace(/"/g, '&quot;');
+      cSymbolSvg = `<img src="${safeSrc}" alt="${cSymbolName}" class="candidate-custom-symbol-img" style="width:100%; height:100%; max-width:100%; max-height:100%; object-fit:contain; display:block; margin:0 auto;" onerror="this.onerror=null; this.src='https://api.dicebear.com/7.x/identicon/svg?seed=symbol';">`;
+    }
+  } else {
+    // Look up symbol from official symbols by selected name (e.g. हाथ, कमल, बोतल, साइकिल, आदि)
+    if (typeof getSymbolSvgById === 'function') {
+      cSymbolSvg = getSymbolSvgById(cSymbolName || candidateData.symbol_icon);
+    } else {
+      cSymbolSvg = (window.OFFICIAL_ELECTION_SYMBOLS && window.OFFICIAL_ELECTION_SYMBOLS[0].svg);
+    }
+  }
+
+  const KAMLA_DEFAULT_PHOTO = './assets/kamala_photo.jpg';
+  const cPhoto = candidateData.photo_url || ((candidateData.candidate_name && candidateData.candidate_name.includes('कमला')) || (State.currentUser && (State.currentUser.username === 'kamala' || State.currentUser.username === 'kamla' || State.currentUser.username === 'b')) ? KAMLA_DEFAULT_PHOTO : 'https://api.dicebear.com/7.x/identicon/svg?seed=candidate');
   const cSlogan = (candidateData.slogan || 'अपने कर्मठ एवं ईमानदार प्रत्याशी को विजयी बनावें।').replace(/\n/g, '<br>');
 
   return `
     <div class="candidate-slip-card">
       <!-- 1. TOP SECTION: CANDIDATE CAMPAIGN BANNER (FULL COLOR) -->
       <div class="candidate-banner-top">
-        <div class="candidate-banner-photo-col">
-          <img src="${cPhoto}" alt="${cName}" onerror="this.src='https://api.dicebear.com/7.x/identicon/svg?seed=candidate'">
-        </div>
-        <div class="candidate-banner-info-col">
-          <div class="candidate-banner-header">।। श्री गणेशाय नमः ।।</div>
-          <div class="candidate-banner-name">${cName}</div>
-          <div>
-            <span class="candidate-banner-post">${cPost} प्रत्याशी</span>
+        <div class="candidate-banner-main-row">
+          <div class="candidate-banner-photo-col">
+            <img src="${cPhoto}" alt="${cName}" onerror="this.src='${KAMLA_DEFAULT_PHOTO}'">
           </div>
-          <div class="candidate-banner-gp">ग्राम पंचायत: <strong>${cGp}</strong> ${cWard ? `• वार्ड नं.: ${cWard}` : ''}</div>
-          <div class="candidate-banner-time" style="font-size:0.72rem; font-weight:700; color:#1e293b; background:#fef3c7; border:1px solid #f59e0b; border-radius:4px; padding:2px 6px; margin:3px 0; display:inline-block;">📅 मतदान दिनांक: <strong>${electionDate}</strong> | ⏰ समय: <strong>${electionTime}</strong></div>
-          <div class="candidate-banner-slogan">${cSlogan}</div>
+          <div class="candidate-banner-info-col">
+            <div class="candidate-banner-header">।। श्री गणेशाय नमः ।।</div>
+            <div class="candidate-banner-name">${cName}</div>
+            <div>
+              <span class="candidate-banner-post">${cPost} प्रत्याशी</span>
+            </div>
+          </div>
+          <div class="candidate-banner-symbol-col">
+            <div class="candidate-symbol-box">
+              ${cSymbolSvg}
+            </div>
+            <div class="candidate-banner-symbol-label">चुनाव चिन्ह:<br><strong>${cSymbolName}</strong></div>
+          </div>
         </div>
-        <div class="candidate-banner-symbol-col">
-          ${cSymbolSvg}
-          <div class="candidate-banner-symbol-label">${cSymbolName.split(' ')[0]}</div>
-        </div>
+
+        <!-- DYNAMIC GP & WARD ACCORDING TO POST (SARPANCH / WARD PANCH / PS / ZP) -->
+        ${(() => {
+          const postStr = String(cPost || '').trim();
+          const rawWard = String(candidateData.ward || voter.ward_no || '').trim();
+          const cleanWard = (rawWard && rawWard.toUpperCase() !== 'ALL') ? rawWard : '';
+          
+          const psZpNo = String(candidateData.ps_zp_ward || (postStr.includes('पंचायत समिति') || postStr.includes('जिला परिषद') ? cleanWard : '') || '').trim();
+          const cleanPsZpNo = (psZpNo && psZpNo.toUpperCase() !== 'ALL') ? psZpNo : '';
+
+          // Dynamic PS/ZP Ward lookup
+          let psZpVal = String(candidateData.ps_zp_ward || candidateData.constituency_ward || '').trim();
+          if (!psZpVal || psZpVal.toUpperCase() === 'ALL') {
+            if (cleanWard) psZpVal = cleanWard;
+            else if (cGp === 'बांदनवाड़ा' && postStr.includes('पंचायत समिति')) psZpVal = '2';
+          }
+          const finalPsZpNo = (psZpVal && psZpVal.toUpperCase() !== 'ALL') ? psZpVal : '';
+
+          if (postStr.includes('पंचायत समिति')) {
+            return `<div class="candidate-banner-gp">ग्राम पंचायत: <strong>${voter.gram_panchayat || cGp}</strong> • पंचायत समिति वार्ड नं.: <strong>${finalPsZpNo || '2'}</strong></div>`;
+          } else if (postStr.includes('जिला परिषद')) {
+            return `<div class="candidate-banner-gp">ग्राम पंचायत: <strong>${voter.gram_panchayat || cGp}</strong> • जिला परिषद वार्ड नं.: <strong>${finalPsZpNo || '1'}</strong></div>`;
+          } else if (postStr.includes('सरपंच')) {
+            // सरपंच: पूरी ग्राम पंचायत (वार्ड नहीं छपेगा)
+            return `<div class="candidate-banner-gp">ग्राम पंचायत: <strong>${cGp}</strong></div>`;
+          } else if (postStr.includes('वार्ड पंच') || postStr.includes('पंच')) {
+            // वार्ड पंच: ग्राम पंचायत व उनका अधिकृत वार्ड नंबर
+            const wpNo = cleanWard || voter.ward_no || '1';
+            return `<div class="candidate-banner-gp">ग्राम पंचायत: <strong>${cGp}</strong> • वार्ड नं.: <strong>${wpNo}</strong></div>`;
+          } else {
+            return `<div class="candidate-banner-gp">ग्राम पंचायत: <strong>${cGp}</strong>${cleanWard ? ` • वार्ड नं.: <strong>${cleanWard}</strong>` : ''}</div>`;
+          }
+        })()}
+
+        <!-- SINGLE LINE DATE & TIME (SMALL LIKE BEFORE) -->
+        <div class="candidate-banner-time">🗓️ मतदान: <strong>${electionDate}</strong> | ⏰ समय: <strong>${electionTime}</strong></div>
+
+        <!-- FULL-WIDTH CANDIDATE APPEAL (SPANS ENTIRE BOX FROM LEFT TO RIGHT) -->
+        <div class="candidate-banner-slogan">${cSlogan}</div>
       </div>
 
-      <!-- 2. PERFORATION CUTTING DIVIDER -->
+      <!-- 2. PERFORATION CUTTING DIVIDER (SLIM & COMPACT) -->
       <div class="slip-perforation-divider">
         <span class="cut-icon">✂️</span>
-        <span>---------------- यहाँ से काटकर मतदाता को दें (काट कर अलग करें) ----------------</span>
+        <span class="cut-text">- - काटकर मतदाता को दें (काट कर अलग करें) - -</span>
         <span class="cut-icon">✂️</span>
       </div>
 
-      <!-- 3. BOTTOM SECTION: 100% CLEAN OFFICIAL B&W VOTER SLIP (NO BACKGROUND) -->
+      <!-- 3. BOTTOM SECTION: 100% CLEAN OFFICIAL B&W VOTER SLIP (NO BACKGROUND, FOOTER REMOVED FOR MAXIMUM SPACE) -->
       <div class="official-bottom-bw-slip">
         <div class="bw-header">
           <div>
@@ -5721,11 +5780,6 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
 
         <div class="bw-booth-box">
           <strong>मतदान केंद्र ${boothNo}:</strong> ${boothName}
-        </div>
-
-        <div class="bw-footer">
-          <span>*मतदान हेतु अधिकृत पहचान पत्र साथ लावें</span>
-          <span>दिनांक: ${electionDate} | समय: ${electionTime}</span>
         </div>
       </div>
     </div>
@@ -8422,29 +8476,33 @@ function buildWithPicSlipHtml(voter, layout, index) {
   return `
     <div class="with-pic-card card-layout-${layout}">
       ${showBanner ? `
-      <!-- TOP CANDIDATE BANNER (ORIGINAL DESIGN WITH CANDIDATE PHOTO & HAND SYMBOL) -->
+      <!-- TOP CANDIDATE BANNER (ORIGINAL DESIGN WITH CANDIDATE PHOTO & OFFICIAL SYMBOL) -->
       <div class="candidate-banner-top">
-        <div class="candidate-banner-photo-col">
-          <img src="${cPhoto}" alt="${cName}" onerror="this.src='${KAMLA_PHOTO}'" />
-        </div>
-        <div class="candidate-banner-info-col">
-          <div class="candidate-banner-header">।। श्री गणेशाय नमः ।। 🙏 विनम्र अपील 🙏</div>
-          <div class="candidate-banner-name">${cName}</div>
-          <div class="candidate-banner-post-badge">
-            <span class="candidate-banner-post">${cPost} प्रत्याशी</span>
+        <div class="candidate-banner-main-row">
+          <div class="candidate-banner-photo-col">
+            <img src="${cPhoto}" alt="${cName}" onerror="this.src='${KAMLA_PHOTO}'" />
           </div>
-          <div class="candidate-banner-gp">क्षेत्र / पंचायत: <strong>${cGp}</strong> ${cWard ? `• वार्ड नं.: ${cWard}` : ''}</div>
-          <div class="candidate-banner-time">📅 मतदान दिनांक: <strong>${cDate}</strong> | ⏰ समय: <strong>${cTime}</strong></div>
-          <div class="candidate-banner-slogan">${cSlogan}</div>
+          <div class="candidate-banner-info-col">
+            <div class="candidate-banner-header">।। श्री गणेशाय नमः ।।</div>
+            <div class="candidate-banner-name">${cName}</div>
+            <div>
+              <span class="candidate-banner-post">${cPost} प्रत्याशी</span>
+            </div>
+          </div>
+          <div class="candidate-banner-symbol-col">
+            <div class="candidate-symbol-box">
+              ${symbolHtml}
+            </div>
+            <div class="candidate-banner-symbol-label">चुनाव चिन्ह:<br><strong>${symbolDisplayName}</strong></div>
+          </div>
         </div>
-        <div class="candidate-banner-symbol-col">
-          <div class="candidate-banner-symbol-box">${symbolHtml}</div>
-          <div class="candidate-banner-symbol-label">${symbolDisplayName}</div>
-        </div>
+        <div class="candidate-banner-gp">ग्राम पंचायत: <strong>${cGp}</strong> ${cWard ? `• वार्ड नं.: ${cWard}` : ''}</div>
+        <div class="candidate-banner-time">🗓️ मतदान: <strong>${cDate}</strong> | ⏰ समय: <strong>${cTime}</strong></div>
+        <div class="candidate-banner-slogan">${cSlogan}</div>
       </div>
       <div class="slip-perforation-divider">
         <span class="cut-icon">✂️</span>
-        <span>---------------- यहाँ से काटकर मतदाता को दें (काट कर अलग करें) ----------------</span>
+        <span class="cut-text">- - काटकर मतदाता को दें (काट कर अलग करें) - -</span>
         <span class="cut-icon">✂️</span>
       </div>` : ''}
 

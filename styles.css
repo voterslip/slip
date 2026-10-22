@@ -3635,26 +3635,38 @@ html, body {
   page-break-inside: avoid;
 }
 
-/* Upper Section: Candidate Color Campaign Banner */
+/* Upper Section: Candidate Color Campaign Banner (Grand, Prominent & Expanded) */
 .candidate-banner-top {
+  flex: 1;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: space-between;
   padding: 4px 6px;
   background: #fffdf5;
-  border-bottom: 1px solid #e2e8f0;
-  gap: 8px;
+  border-bottom: 1px solid #cbd5e1;
   box-sizing: border-box;
 }
 
+.candidate-banner-main-row {
+  display: flex;
+  align-items: flex-start !important;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+}
+
 .candidate-banner-photo-col {
-  width: 48px;
-  height: 56px;
+  width: 56px;
+  height: 62px;
+  min-width: 56px;
+  min-height: 62px;
   flex-shrink: 0;
-  border: 1.5px solid #b45309;
+  border: 2px solid #b45309;
   border-radius: 4px;
   overflow: hidden;
-  background: #f1f5f9;
+  background: #1e293b;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  box-sizing: border-box;
 }
 
 .candidate-banner-photo-col img {
@@ -3667,94 +3679,156 @@ html, body {
 .candidate-banner-info-col {
   flex: 1;
   text-align: center;
-  line-height: 1.15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 62px;
+  padding: 0 2px;
 }
 
 .candidate-banner-header {
-  font-size: 5.5pt;
+  font-size: 5.4pt;
   color: #b45309;
   font-weight: 800;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  line-height: 1;
 }
 
 .candidate-banner-name {
-  font-size: 9.5pt;
+  font-size: 11.5pt;
   font-weight: 900;
   color: #b91c1c;
-  margin: 1px 0;
-  text-shadow: 0.2px 0.2px 0px rgba(0,0,0,0.2);
+  margin: 0;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-shadow: 0.2px 0.2px 0px rgba(0,0,0,0.12);
 }
 
 .candidate-banner-post {
   display: inline-block;
   background: #dc2626;
   color: #ffffff;
-  font-size: 6.2pt;
+  font-size: 6.8pt;
   font-weight: 800;
-  padding: 1px 5px;
+  padding: 1px 6px;
   border-radius: 3px;
-  letter-spacing: 0.3px;
-}
-
-.candidate-banner-gp {
-  font-size: 6.0pt;
-  font-weight: 700;
-  color: #1e3a8a;
-  margin-top: 1px;
-}
-
-.candidate-banner-slogan {
-  font-size: 5.5pt;
-  font-weight: 600;
-  color: #334155;
-  margin-top: 1px;
-  white-space: pre-line;
+  letter-spacing: 0.2px;
+  line-height: 1.2;
 }
 
 .candidate-banner-symbol-col {
-  width: 50px;
+  width: 56px;
+  min-width: 56px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 2px;
-  border: 1.5px solid #d97706;
-  border-radius: 4px;
-  background: #ffffff;
+  justify-content: flex-start;
+  text-align: center;
+  box-sizing: border-box;
 }
 
-.candidate-banner-symbol-col svg {
-  width: 36px;
-  height: 36px;
+.candidate-symbol-box {
+  width: 56px;
+  height: 62px;
+  min-width: 56px;
+  min-height: 62px;
+  flex-shrink: 0;
+  border: 2px solid #b45309;
+  border-radius: 4px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.candidate-symbol-box svg,
+.candidate-symbol-box img,
+.candidate-custom-symbol-img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  display: block !important;
+  margin: 0 auto !important;
+  transform: scale(1.08) !important;
 }
 
 .candidate-banner-symbol-label {
-  font-size: 5.2pt;
+  font-size: 5.6pt;
   font-weight: 800;
   color: #9a3412;
   text-align: center;
   margin-top: 1px;
+  line-height: 1.05;
+  word-break: break-word;
+  max-width: 56px;
 }
 
-/* PERFORATION DIVIDER CUT LINE */
+.candidate-banner-gp {
+  font-size: 6.2pt;
+  font-weight: 700;
+  color: #1e3a8a;
+  text-align: center;
+  white-space: nowrap;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+.candidate-banner-time {
+  font-size: 5.4pt;
+  font-weight: 700;
+  color: #047857;
+  text-align: center;
+  white-space: nowrap;
+  margin-top: 1px;
+  line-height: 1.15;
+}
+
+.candidate-banner-slogan {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 6.8pt;
+  font-weight: 800;
+  color: #b91c1c;
+  line-height: 1.25;
+  text-align: center;
+  background: #fffbeb;
+  border: 1px dashed #f59e0b;
+  border-radius: 3px;
+  padding: 2.5px 4px;
+  margin-top: 2px;
+  white-space: normal;
+}
+
+/* PERFORATION DIVIDER CUT LINE (SLIM & CLEAN) */
 .slip-perforation-divider {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 2px 0;
+  padding: 1px 0;
+  margin: 0;
   background: #ffffff;
-  border-top: 1.5px dashed #475569;
-  border-bottom: 1.5px dashed #475569;
-  color: #0f172a;
-  font-size: 6.0pt;
-  font-weight: 800;
-  letter-spacing: 0.3px;
+  border-top: 1px dashed #64748b;
+  border-bottom: 1px dashed #64748b;
+  color: #334155;
+  font-size: 5.4pt;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  line-height: 1.1;
 }
 
 .slip-perforation-divider .cut-icon {
-  font-size: 7.5pt;
+  font-size: 6.5pt;
 }
 
 /* LOWER SECTION: 100% CLEAN OFFICIAL B&W VOTER SLIP (NO BACKGROUND) */
