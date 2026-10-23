@@ -1,4 +1,25 @@
 // ==========================================================================
+// HINDI FUZZY MATCH NORMALIZER (IMMUNE TO TYPOS, SPACING & MATRA VARIATIONS)
+// e.g. "देवलिया कलां" == "देवलियाकलां", "कनईकलां" == "कनईकला", "चांपानेरी" == "चापानेरी"
+// ==========================================================================
+function cleanHindi(s) {
+  return String(s || '')
+    .replace(/[\s\-_]/g, '')
+    .replace(/न्(?=[क-ह])/g, '')
+    .replace(/म्(?=[क-ह])/g, '')
+    .replace(/[ँं]/g, '')
+    .replace(/़/g, '')
+    .replace(/ण/g, 'न')
+    .replace(/श/g, 'स')
+    .replace(/ष/g, 'स')
+    .replace(/ौ/g, 'ो')
+    .replace(/ै/g, 'े')
+    .replace(/ी/g, 'ि')
+    .replace(/ू/g, 'ु')
+    .toLowerCase();
+}
+
+// ==========================================================================
 // GRANULAR MULTI-GP & PARTIAL WARD PARSER FOR PS, ZP, SARPANCH & WARD PANCH
 // Supported Sheet Formats:
 // 1. "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5 | कनईकलां: 11,12,13"
@@ -3383,11 +3404,14 @@ function getAllowedGps() {
     return assignedList.some(a => {
       if (!a) return false;
       const s = String(a).trim().toLowerCase();
-      return s === p.code.toLowerCase() || 
-             s === p.name_hi.trim().toLowerCase() || 
-             s === (p.name_en || '').trim().toLowerCase() ||
-             (p.name_en && s.includes(p.name_en.toLowerCase())) ||
-             (p.name_hi && s.includes(p.name_hi));
+      if (s === p.code.toLowerCase()) return true;
+      if (p.name_en && s === p.name_en.toLowerCase()) return true;
+      if (typeof cleanHindi === 'function') {
+        const cA = cleanHindi(a);
+        const cP = cleanHindi(p.name_hi);
+        if (cA === cP || cA.includes(cP) || cP.includes(cA)) return true;
+      }
+      return s === p.name_hi.trim().toLowerCase() || (p.name_hi && s.includes(p.name_hi));
     });
   });
 
@@ -3416,9 +3440,11 @@ function getAllowedWardsList(gpCode) {
 
   // 1. Direct match in partial ward map (e.g. "बांदनवाड़ा: 1,2")
   if (gpNameHi && parsed.map) {
+    const targetClean = typeof cleanHindi === 'function' ? cleanHindi(gpNameHi) : gpNameHi.toLowerCase().trim();
     for (const [k, v] of Object.entries(parsed.map)) {
       if (k === '_default') continue;
-      if (gpNameHi.includes(k) || k.includes(gpNameHi)) {
+      const kClean = typeof cleanHindi === 'function' ? cleanHindi(k) : k.toLowerCase().trim();
+      if (targetClean === kClean || targetClean.includes(kClean) || kClean.includes(targetClean)) {
         return (v === 'ALL') ? 'ALL' : (Array.isArray(v) ? v.map(String) : [String(v)]);
       }
     }

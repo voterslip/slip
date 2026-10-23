@@ -5405,8 +5405,8 @@
       "mobile": "",
       "role": "CANDIDATE",
       "status": "ACTIVE",
-      "allowed_panchayats": "बांदनवाड़ा, देवलिया कलां",
-      "allowed_wards": "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5",
+      "allowed_panchayats": "बांदनवाड़ा",
+      "allowed_wards": "बांदनवाड़ा: ALL",
       "allowed_tabs": [
         "searchTab",
         "alphaTab",
@@ -5444,7 +5444,7 @@
       "ward": "2",
       "name": "कमला देवी",
       "print_ward_no": "2",
-      "allowed_panchayat_wards": "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5"
+      "allowed_panchayat_wards": "बांदनवाड़ा: ALL"
     },
     {
       "id": "kamla",
@@ -5454,8 +5454,8 @@
       "mobile": "",
       "role": "CANDIDATE",
       "status": "ACTIVE",
-      "allowed_panchayats": "बांदनवाड़ा, देवलिया कलां",
-      "allowed_wards": "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5",
+      "allowed_panchayats": "बांदनवाड़ा",
+      "allowed_wards": "बांदनवाड़ा: ALL",
       "allowed_tabs": [
         "searchTab",
         "alphaTab",
@@ -5493,7 +5493,7 @@
       "ward": "2",
       "name": "कमला देवी",
       "print_ward_no": "2",
-      "allowed_panchayat_wards": "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5"
+      "allowed_panchayat_wards": "बांदनवाड़ा: ALL"
     },
     {
       "id": "zp_rajendra",
@@ -6632,9 +6632,9 @@
       "print_ward_no": "2",
       "ward": "2",
       "ps_zp_ward": "2",
-      "panchayat": "बांदनवाड़ा, देवलिया कलां",
-      "allowed_panchayats": "बांदनवाड़ा, देवलिया कलां",
-      "allowed_panchayat_wards": "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5",
+      "panchayat": "बांदनवाड़ा",
+      "allowed_panchayats": "बांदनवाड़ा",
+      "allowed_panchayat_wards": "बांदनवाड़ा: ALL",
       "symbol_name": "हाथ",
       "symbol_icon": "हाथ",
       "slogan": "क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।",
@@ -6651,9 +6651,9 @@
       "print_ward_no": "2",
       "ward": "2",
       "ps_zp_ward": "2",
-      "panchayat": "बांदनवाड़ा, देवलिया कलां",
-      "allowed_panchayats": "बांदनवाड़ा, देवलिया कलां",
-      "allowed_panchayat_wards": "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5",
+      "panchayat": "बांदनवाड़ा",
+      "allowed_panchayats": "बांदनवाड़ा",
+      "allowed_panchayat_wards": "बांदनवाड़ा: ALL",
       "symbol_name": "हाथ",
       "symbol_icon": "हाथ",
       "slogan": "क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।",
@@ -6670,9 +6670,9 @@
       "print_ward_no": "2",
       "ward": "2",
       "ps_zp_ward": "2",
-      "panchayat": "बांदनवाड़ा, देवलिया कलां",
-      "allowed_panchayats": "बांदनवाड़ा, देवलिया कलां",
-      "allowed_panchayat_wards": "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5",
+      "panchayat": "बांदनवाड़ा",
+      "allowed_panchayats": "बांदनवाड़ा",
+      "allowed_panchayat_wards": "बांदनवाड़ा: ALL",
       "symbol_name": "हाथ",
       "symbol_icon": "हाथ",
       "slogan": "क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।",

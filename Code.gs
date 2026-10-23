@@ -2,7 +2,7 @@
  * ================================================================================================
  * 🗳️ राजस्थान राज्य निर्वाचन आयोग - पंचायत आम चुनाव 2026
  * कार्यालय उपखंड मजिस्ट्रेट (SDM), भिनाय (अजमेर)
- * मास्टर Google Apps Script बैकएंड व सेटिंग्स कंट्रोलर (Code.gs)
+ * मास्टर Google Apps Script बैकएंड व मल्टी-सेलेक्ट कंट्रोलर (Code.gs)
  * ================================================================================================
  */
 
@@ -10,16 +10,148 @@ var SHEET_SETTINGS = "Settings";
 var SHEET_USERS = "Users";
 var SHEET_CANDIDATES = "Candidates";
 
+// समस्त 30 अधिकृत ग्राम पंचायतें
+var OFFICIAL_PANCHAYATS = [
+  "कनईकला", "करांटी", "कैरोंट", "खेडी", "कुम्हारिया",
+  "गुढाखुर्द", "घणा", "चापानेरी", "छछून्दरा", "धांतोल",
+  "देवपुरा", "देवलियाकलां", "नागोला", "नान्दसी", "पड़ांगा",
+  "पाडलिया", "बगराई", "बड़गांव", "बड़ली", "बांदनवाड़ा",
+  "बूबकिया", "भिनाय", "राममालिया", "राताकोट", "लामगरा",
+  "सिंगावल", "सोबडी", "सोलखुर्द", "हियालिया", "एकलसिंहा"
+];
+
+// अधिकृत चुनाव चिन्ह
+var OFFICIAL_SYMBOLS = [
+  "हाथ", "कमल", "उगता सूरज", "पतंग", "बोतल", "साइकिल",
+  "गिलास", "कार", "ताला-चाबी", "बल्ला", "पंखा", "अलमारी", "सिलेंडर", "मोमबत्ती"
+];
+
+// ================================================================================================
+// 1. CUSTOM MENU & SIDEBAR / DIALOG PICKER
+// ================================================================================================
 function onOpen() {
   SpreadsheetApp.getUi().createMenu("🗳️ चुनाव पोर्टल कंट्रोल")
+    .addItem("🎯 पंचायत व वार्ड चयनकर्ता (Multi-Select Dialog)", "openPanchayatWardPicker")
+    .addSeparator()
     .addItem("🚀 1-क्लिक सम्पूर्ण शीट ऑटो-सेटअप (Master Setup)", "setupAllSheets")
     .addItem("⚙️ केवल Settings शीट रीसेट/अपडेट करें", "setupSettingsSheet")
-    .addItem("🔄 चेकबॉक्स व परमिशन रीफ्रेश करें", "refreshCheckboxes")
+    .addItem("🔄 ड्रॉपडाउन व चेकबॉक्स रीफ्रेश करें", "refreshCheckboxes")
     .addSeparator()
     .addItem("ℹ️ वेब ऐप URL व सहायता", "showAppInfo")
     .addToUi();
 }
 
+/**
+ * मल्टी-सेलेक्ट पॉपअप मॉडल: जहाँ यूजर बिना टाइप किए चेकबॉक्स द्वारा पंचायत व वार्ड चुन सकता है
+ */
+function openPanchayatWardPicker() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getActiveSheet();
+  var sheetName = sheet.getName();
+  
+  if (sheetName !== SHEET_USERS && sheetName !== SHEET_CANDIDATES) {
+    SpreadsheetApp.getUi().alert("⚠️ कृपया पहले 'Users' या 'Candidates' शीट में उस पंक्ति (Row) पर क्लिक करें जिसे आप अपडेट करना चाहते हैं!");
+    return;
+  }
+
+  var row = sheet.getActiveRange().getRow();
+  if (row <= 1) {
+    SpreadsheetApp.getUi().alert("⚠️ कृपया शीर्षक (Header) के नीचे किसी प्रत्याशी या यूजर की पंक्ति चुनें!");
+    return;
+  }
+
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var rowData = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  var userName = String(rowData[headers.indexOf("Candidate_Name")] || rowData[headers.indexOf("Full_Name")] || rowData[headers.indexOf("Username")] || "प्रत्याशी");
+  var post = String(rowData[headers.indexOf("Post")] || "पंचायत समिति सदस्य");
+  var curPrintWard = String(rowData[headers.indexOf("Print_Ward_No")] || "2");
+  var curGps = String(rowData[headers.indexOf("Allowed_Panchayats")] || "");
+  var curWardScope = String(rowData[headers.indexOf("Allowed_Panchayat_Wards")] || "");
+
+  var htmlTemplate = HtmlService.createTemplate(getPickerHtmlTemplate());
+  htmlTemplate.row = row;
+  htmlTemplate.sheetName = sheetName;
+  htmlTemplate.userName = userName;
+  htmlTemplate.post = post;
+  htmlTemplate.curPrintWard = curPrintWard;
+  htmlTemplate.curGps = curGps;
+  htmlTemplate.curWardScope = curWardScope;
+  htmlTemplate.panchayatsJson = JSON.stringify(OFFICIAL_PANCHAYATS);
+
+  var html = htmlTemplate.evaluate()
+    .setWidth(720)
+    .setHeight(620)
+    .setTitle("🎯 मल्टीपल पंचायत व आंशिक वार्ड चयनकर्ता");
+
+  SpreadsheetApp.getUi().showModalDialog(html, "🎯 " + userName + " (" + post + ") - पंचायत व वार्ड चयनकर्ता");
+}
+
+/**
+ * मॉडल डायलॉग से सेव बटन दबाने पर सीधे सक्रिय पंक्ति में डेटा लिखने वाला फंक्शन
+ */
+function savePickerData(data) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(data.sheetName);
+    if (!sheet) return { success: false, error: "शीट नहीं मिली!" };
+
+    var row = parseInt(data.row, 10);
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+    var pWardCol = headers.indexOf("Print_Ward_No");
+    var gpsCol = headers.indexOf("Allowed_Panchayats");
+    var wardsCol = headers.indexOf("Allowed_Panchayat_Wards");
+
+    if (pWardCol !== -1) sheet.getRange(row, pWardCol + 1).setValue(data.printWardNo || "ALL");
+    if (gpsCol !== -1) sheet.getRange(row, gpsCol + 1).setValue(data.allowedPanchayats || "ALL");
+    if (wardsCol !== -1) sheet.getRange(row, wardsCol + 1).setValue(data.allowedPanchayatWards || "ALL");
+
+    SpreadsheetApp.flush();
+    return { success: true, message: "पंक्ति " + row + " में पंचायत व वार्ड विवरण सफलतापूर्वक सुरक्षित हो गया!" };
+  } catch(err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+/**
+ * ऑन-एडिट ट्रिगर: जब यूजर Allowed_Panchayats के ड्रॉपडाउन से एक से अधिक पंचायतें चुनता है,
+ * तो यह बिना टाइप किए कॉमा लगाकर जोड़ता जाता है।
+ */
+function onEdit(e) {
+  if (!e || !e.range) return;
+  var sheet = e.range.getSheet();
+  var sheetName = sheet.getName();
+  if (sheetName !== SHEET_USERS && sheetName !== SHEET_CANDIDATES) return;
+
+  var row = e.range.getRow();
+  var col = e.range.getColumn();
+  if (row <= 1) return;
+
+  var header = sheet.getRange(1, col).getValue();
+  if (header === "Allowed_Panchayats") {
+    var newVal = String(e.value || "").trim();
+    var oldVal = String(e.oldValue || "").trim();
+
+    if (!newVal || newVal === "ALL" || !oldVal || oldVal === "ALL") {
+      return;
+    }
+
+    var list = oldVal.split(",").map(function(s) { return s.trim(); }).filter(Boolean);
+    var idx = list.indexOf(newVal);
+    if (idx !== -1) {
+      list.splice(idx, 1); // अगर दोबारा चुना तो हट जाएगा
+    } else {
+      list.push(newVal); // नया चुना तो जुड़ जाएगा
+    }
+
+    e.range.setValue(list.join(", "));
+  }
+}
+
+// ================================================================================================
+// 2. MASTER 1-CLICK SETUP FOR ALL SHEETS
+// ================================================================================================
 function setupAllSheets() {
   setupSettingsSheet();
   setupUsersSheet();
@@ -28,10 +160,11 @@ function setupAllSheets() {
   SpreadsheetApp.flush();
   try {
     SpreadsheetApp.getUi().alert(
-      "✅ सम्पूर्ण सेटअप सफल!\n\n" +
+      "✅ सम्पूर्ण मास्टर सेटअप सफल!\n\n" +
       "1. 'Settings' शीट: पोर्टल नाम, मतदान तिथि, समय और मॉड्यूल कंट्रोल तैयार हैं।\n" +
-      "2. 'Users' शीट: पंच, सरपंच, पंचायत समिति व जिला परिषद यूजर्स (आंशिक वार्ड कंट्रोल सहित) तैयार हैं।\n" +
-      "3. 'Candidates' शीट: प्रत्याशी विवरण (पर्ची पर छपने वाला वार्ड व पंचायतवार आंशिक वार्ड सहित) तैयार है।"
+      "2. 'Users' शीट: कमला देवी (केवल बांदनवाड़ा), जिला परिषद, सरपंच व वार्ड पंच तैयार हैं।\n" +
+      "3. 'Candidates' शीट: प्रत्याशी विवरण (ड्रॉपडाउन चयन व आंशिक वार्ड सहित) तैयार है।\n\n" +
+      "💡 टिप: किसी भी प्रत्याशी के आगे 'Allowed_Panchayats' वाले सेल में ड्रॉपडाउन से एक-एक करके मल्टीपल पंचायतें चुन सकते हैं या ऊपर मेनू '🎯 पंचायत व वार्ड चयनकर्ता' का उपयोग कर सकते हैं!"
     );
   } catch(e) {}
 }
@@ -109,39 +242,42 @@ function setupUsersSheet() {
     // 1. Super Admin: समस्त 30 पंचायतें, सभी वार्ड
     ["admin", "admin2026", "मुख्य व्यवस्थापक (Super Admin)", "7023293283", "SUPER_ADMIN", true, "मुख्य व्यवस्थापक", "ALL", "ALL", "ALL", true, true, true, true, true, true, true, nowStr],
 
-    // 2. पंचायत समिति सदस्य: कमला देवी (PS वार्ड 2) - बांदनवाड़ा (वार्ड 1,2) व देवलिया कलां (वार्ड 2,3,4,5)
-    ["kamala", "bhinai2026", "कमला देवी", "9876543210", "CANDIDATE", true, "पंचायत समिति सदस्य", "2", "बांदनवाड़ा, देवलिया कलां", "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5", true, true, true, true, true, true, true, nowStr],
-    ["kamla", "bhinai2026", "कमला देवी", "9876543210", "CANDIDATE", true, "पंचायत समिति सदस्य", "2", "बांदनवाड़ा, देवलिया कलां", "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5", true, true, true, true, true, true, true, nowStr],
+    // 2. पंचायत समिति सदस्य: कमला देवी (केवल बांदनवाड़ा पंचायत) - PS वार्ड 2
+    ["kamala", "bhinai2026", "कमला देवी", "9876543210", "CANDIDATE", true, "पंचायत समिति सदस्य", "2", "बांदनवाड़ा", "बांदनवाड़ा: ALL", true, true, true, true, true, true, true, nowStr],
+    ["kamla", "bhinai2026", "कमला देवी", "9876543210", "CANDIDATE", true, "पंचायत समिति सदस्य", "2", "बांदनवाड़ा", "बांदनवाड़ा: ALL", true, true, true, true, true, true, true, nowStr],
 
-    // 3. जिला परिषद सदस्य: राजेन्द्र चौधरी (ZP वार्ड 15) - बांदनवाड़ा (1,2,3), देवलिया कलां (1,2,3,4) व कनईकलां (11,12,13)
-    ["zp_rajendra", "zp2026", "राजेन्द्र चौधरी", "9829000015", "CANDIDATE", true, "जिला परिषद सदस्य", "15", "बांदनवाड़ा, देवलिया कलां, कनईकलां", "बांदनवाड़ा: 1,2,3 | देवलिया कलां: 1,2,3,4 | कनईकलां: 11,12,13", true, true, true, true, true, true, true, nowStr],
+    // 3. जिला परिषद सदस्य: राजेन्द्र चौधरी (ZP वार्ड 15) - 3 पंचायतें
+    ["zp_rajendra", "zp2026", "राजेन्द्र चौधरी", "9829000015", "CANDIDATE", true, "जिला परिषद सदस्य", "15", "बांदनवाड़ा, देवलियाकलां, कनईकला", "बांदनवाड़ा: 1,2,3 | देवलियाकलां: 1,2,3,4 | कनईकला: 11,12,13", true, true, true, true, true, true, true, nowStr],
 
     // 4. सरपंच प्रत्याशी: रामेश्वर जाट (कनईकलां) - पूरी ग्राम पंचायत, सारे वार्ड खुलेंगे (ALL)
-    ["sarpanch_kanai", "kanai2026", "रामेश्वर जाट", "9829000001", "CANDIDATE", true, "सरपंच", "ALL", "कनईकलां", "ALL", true, true, true, true, true, true, true, nowStr],
+    ["sarpanch_kanai", "kanai2026", "रामेश्वर जाट", "9829000001", "CANDIDATE", true, "सरपंच", "ALL", "कनईकला", "ALL", true, true, true, true, true, true, true, nowStr],
 
     // 5. वार्ड पंच प्रत्याशी: सुभाष गुर्जर (कनईकलां - वार्ड 4) - केवल वार्ड 4 खुलेगा और लॉक रहेगा
-    ["panch_w4", "panch2026", "सुभाष गुर्जर", "9829000004", "CANDIDATE", true, "वार्ड पंच", "4", "कनईकलां", "4", true, true, true, true, true, true, true, nowStr]
+    ["panch_w4", "panch2026", "सुभाष गुर्जर", "9829000004", "CANDIDATE", true, "वार्ड पंच", "4", "कनईकला", "4", true, true, true, true, true, true, true, nowStr]
   ];
 
   sheet.getRange(2, 1, defaultUsers.length, headers.length).setValues(defaultUsers);
 
-  // Checkbox validation for Status, Can_Search, Can_Alpha, Can_Bulk_Slips, Can_With_Pic_Slips, Can_Candidate_Profile, Can_Print, Can_Download
+  // 1. Checkboxes
   var checkCols = [6, 11, 12, 13, 14, 15, 16, 17];
   var checkRule = SpreadsheetApp.newDataValidation().requireCheckbox().build();
   for (var i = 0; i < checkCols.length; i++) {
     sheet.getRange(2, checkCols[i], 100, 1).setDataValidation(checkRule);
   }
 
+  // 2. Dropdowns for Role, Post, Allowed_Panchayats
+  applySheetDropdowns(sheet, headers);
+
   sheet.setColumnWidth(1, 130);
   sheet.setColumnWidth(2, 110);
   sheet.setColumnWidth(3, 180);
   sheet.setColumnWidth(4, 110);
-  sheet.setColumnWidth(5, 110);
+  sheet.setColumnWidth(5, 120);
   sheet.setColumnWidth(6, 70);
   sheet.setColumnWidth(7, 160);
   sheet.setColumnWidth(8, 120);
-  sheet.setColumnWidth(9, 200);
-  sheet.setColumnWidth(10, 320);
+  sheet.setColumnWidth(9, 240);
+  sheet.setColumnWidth(10, 340);
   sheet.setFrozenRows(1);
 }
 
@@ -163,10 +299,10 @@ function setupCandidatesSheet() {
     .setHorizontalAlignment("center");
 
   var candData = [
-    // 1. पंचायत समिति सदस्य प्रत्याशी: कमला देवी (वार्ड 2 छपेगा, बांदनवाड़ा w1,2 और देवलिया कलां w2,3,4,5 खुलेंगे)
+    // 1. पंचायत समिति सदस्य प्रत्याशी: कमला देवी (केवल बांदनवाड़ा पंचायत, वार्ड 2 छपेगा)
     [
       "kamala", "bhinai2026", "कमला देवी", "पंचायत समिति सदस्य", "2",
-      "बांदनवाड़ा, देवलिया कलां", "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5", "हाथ",
+      "बांदनवाड़ा", "बांदनवाड़ा: ALL", "हाथ",
       "क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।",
       "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
       "9876543210", true, true, true
@@ -174,7 +310,7 @@ function setupCandidatesSheet() {
     // 2. जिला परिषद सदस्य प्रत्याशी: राजेन्द्र चौधरी (वार्ड 15 छपेगा, 3 पंचायतों के आंशिक वार्ड खुलेंगे)
     [
       "zp_rajendra", "zp2026", "राजेन्द्र चौधरी", "जिला परिषद सदस्य", "15",
-      "बांदनवाड़ा, देवलिया कलां, कनईकलां", "बांदनवाड़ा: 1,2,3 | देवलिया कलां: 1,2,3,4 | कनईकलां: 11,12,13", "कमल",
+      "बांदनवाड़ा, देवलियाकलां, कनईकला", "बांदनवाड़ा: 1,2,3 | देवलियाकलां: 1,2,3,4 | कनईकला: 11,12,13", "कमल",
       "जिला परिषद क्षेत्र के चहुंमुखी विकास हेतु आपका अपना कर्मठ एवं विश्वस्त साथी।",
       "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
       "9829000015", true, true, true
@@ -182,7 +318,7 @@ function setupCandidatesSheet() {
     // 3. सरपंच प्रत्याशी: रामेश्वर जाट (पूरी ग्राम पंचायत कनईकलां, सारे वार्ड खुलेंगे, पर्ची पर केवल ग्राम पंचायत छपेगी)
     [
       "sarpanch_kanai", "kanai2026", "रामेश्वर जाट", "सरपंच", "ALL",
-      "कनईकलां", "ALL", "उगता सूरज",
+      "कनईकला", "ALL", "उगता सूरज",
       "ग्राम पंचायत के सर्वांगीण विकास हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।",
       "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
       "9829000001", true, true, true
@@ -190,7 +326,7 @@ function setupCandidatesSheet() {
     // 4. वार्ड पंच प्रत्याशी: सुभाष गुर्जर (कनईकलां - केवल वार्ड 4 खुलेगा और पर्ची पर वार्ड 4 छपेगा)
     [
       "panch_w4", "panch2026", "सुभाष गुर्जर", "वार्ड पंच", "4",
-      "कनईकलां", "4", "पतंग",
+      "कनईकला", "4", "पतंग",
       "वार्ड के विकास एवं स्वच्छता हेतु भारी मतों से विजयी बनावें।",
       "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
       "9829000004", true, true, true
@@ -199,19 +335,48 @@ function setupCandidatesSheet() {
 
   sheet.getRange(2, 1, candData.length, headers.length).setValues(candData);
   
+  // Checkboxes
   var checkRule = SpreadsheetApp.newDataValidation().requireCheckbox().build();
   sheet.getRange(2, 13, 50, 3).setDataValidation(checkRule);
+
+  // Dropdowns
+  applySheetDropdowns(sheet, headers);
 
   sheet.setColumnWidth(1, 130);
   sheet.setColumnWidth(2, 110);
   sheet.setColumnWidth(3, 160);
   sheet.setColumnWidth(4, 160);
   sheet.setColumnWidth(5, 120);
-  sheet.setColumnWidth(6, 200);
-  sheet.setColumnWidth(7, 320);
-  sheet.setColumnWidth(8, 110);
+  sheet.setColumnWidth(6, 240);
+  sheet.setColumnWidth(7, 340);
+  sheet.setColumnWidth(8, 120);
   sheet.setColumnWidth(9, 280);
   sheet.setFrozenRows(1);
+}
+
+/**
+ * पद, पंचायत और चुनाव चिन्ह के लिए ऑटोमैटिक ड्रॉपडाउन नियम लागू करना
+ */
+function applySheetDropdowns(sheet, headers) {
+  var postCol = headers.indexOf("Post");
+  if (postCol !== -1) {
+    var postList = ["पंचायत समिति सदस्य", "जिला परिषद सदस्य", "सरपंच", "वार्ड पंच", "मुख्य व्यवस्थापक", "बी.एल.ओ."];
+    var postRule = SpreadsheetApp.newDataValidation().requireValueInList(postList, true).build();
+    sheet.getRange(2, postCol + 1, 100, 1).setDataValidation(postRule);
+  }
+
+  var gpCol = headers.indexOf("Allowed_Panchayats");
+  if (gpCol !== -1) {
+    var gpOptions = ["ALL"].concat(OFFICIAL_PANCHAYATS);
+    var gpRule = SpreadsheetApp.newDataValidation().requireValueInList(gpOptions, true).build();
+    sheet.getRange(2, gpCol + 1, 100, 1).setDataValidation(gpRule);
+  }
+
+  var symCol = headers.indexOf("Symbol_Name");
+  if (symCol !== -1) {
+    var symRule = SpreadsheetApp.newDataValidation().requireValueInList(OFFICIAL_SYMBOLS, true).build();
+    sheet.getRange(2, symCol + 1, 100, 1).setDataValidation(symRule);
+  }
 }
 
 function refreshCheckboxes() {
@@ -230,19 +395,23 @@ function refreshCheckboxes() {
 
   var uSheet = ss.getSheetByName(SHEET_USERS);
   if (uSheet) {
+    var uHeaders = uSheet.getRange(1, 1, 1, uSheet.getLastColumn()).getValues()[0];
     var checkCols = [6, 11, 12, 13, 14, 15, 16, 17];
     for (var c = 0; c < checkCols.length; c++) {
       uSheet.getRange(2, checkCols[c], 100, 1).setDataValidation(checkRule);
     }
+    applySheetDropdowns(uSheet, uHeaders);
   }
 
   var cSheet = ss.getSheetByName(SHEET_CANDIDATES);
   if (cSheet) {
+    var cHeaders = cSheet.getRange(1, 1, 1, cSheet.getLastColumn()).getValues()[0];
     cSheet.getRange(2, 13, 50, 3).setDataValidation(checkRule);
+    applySheetDropdowns(cSheet, cHeaders);
   }
 
   try {
-    SpreadsheetApp.getUi().alert("✅ समस्त चेकबॉक्स सफलतापूर्वक रीफ्रेश हो गए हैं!");
+    SpreadsheetApp.getUi().alert("✅ समस्त चेकबॉक्स एवं ड्रॉपडाउन सूचियां सफलतापूर्वक रीफ्रेश हो गई हैं!");
   } catch(e) {}
 }
 
@@ -252,12 +421,16 @@ function showAppInfo() {
     "2. 'Select type' में 'Web app' चुनें।\n" +
     "3. 'Execute as' में 'Me' चुनें।\n" +
     "4. 'Who has access' में 'Anyone' (सभी) चुनें।\n" +
-    "5. 'Deploy' पर क्लिक करके Web App URL कॉपी कर लें।";
+    "5. 'Deploy' पर क्लिक करके Web App URL कॉपी कर लें।\n\n" +
+    "💡 टिप: बिना टाइपिंग के पंचायत व वार्ड चुनने हेतु '🗳️ चुनाव पोर्टल कंट्रोल' मेनू में '🎯 पंचायत व वार्ड चयनकर्ता' का उपयोग करें!";
   try {
     SpreadsheetApp.getUi().alert(msg);
   } catch(e) {}
 }
 
+// ================================================================================================
+// 3. HTTP GET & POST HANDLERS (PORTAL REAL-TIME SYNC)
+// ================================================================================================
 function doGet(e) {
   var params = (e && e.parameter) ? e.parameter : {};
   var action = params.action || "ping";
@@ -576,4 +749,192 @@ function handleSaveCandidate(cand) {
   }
 
   return { success: true, message: "प्रत्याशी विवरण सुरक्षित हो गया!" };
+}
+
+// ================================================================================================
+// 4. EMBEDDED HTML TEMPLATE FOR MULTI-SELECT PICKER DIALOG
+// ================================================================================================
+function getPickerHtmlTemplate() {
+  return '<!DOCTYPE html>' +
+  '<html>' +
+  '<head>' +
+  '<base target="_top">' +
+  '<style>' +
+  '  * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }' +
+  '  body { margin: 0; padding: 16px; background: #f8fafc; color: #1e293b; font-size: 13px; }' +
+  '  .header-box { background: #4338ca; color: #fff; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; }' +
+  '  .header-title { font-size: 15px; font-weight: 700; margin: 0; }' +
+  '  .header-sub { font-size: 12px; opacity: 0.9; margin-top: 3px; }' +
+  '  .top-controls { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; }' +
+  '  .search-input { flex: 1; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 5px; font-size: 13px; outline: none; }' +
+  '  .search-input:focus { border-color: #4338ca; }' +
+  '  .gp-container { max-height: 340px; overflow-y: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; }' +
+  '  .gp-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; background: #fafafa; transition: all 0.15s; }' +
+  '  .gp-card.active { border-color: #6366f1; background: #eef2ff; }' +
+  '  .gp-head { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }' +
+  '  .gp-label { font-weight: 700; font-size: 13px; color: #1e1b4b; display: flex; align-items: center; gap: 6px; cursor: pointer; }' +
+  '  .ward-box { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #cbd5e1; display: none; }' +
+  '  .gp-card.active .ward-box { display: block; }' +
+  '  .ward-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }' +
+  '  .ward-btn { font-size: 11px; padding: 2px 7px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer; user-select: none; }' +
+  '  .ward-btn.selected { background: #4338ca; color: #fff; border-color: #4338ca; font-weight: 700; }' +
+  '  .ward-btn.all-btn { background: #059669; color: #fff; border-color: #059669; font-weight: 700; }' +
+  '  .footer-box { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid #e2e8f0; }' +
+  '  .save-btn { background: #059669; color: #fff; border: none; padding: 9px 20px; font-size: 13px; font-weight: 700; border-radius: 6px; cursor: pointer; }' +
+  '  .save-btn:hover { background: #047857; }' +
+  '  .cancel-btn { background: #e2e8f0; color: #475569; border: none; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }' +
+  '  .preview-bar { background: #f1f5f9; padding: 6px 10px; border-radius: 5px; font-size: 11px; color: #334155; margin-top: 8px; border: 1px solid #cbd5e1; word-break: break-all; }' +
+  '</style>' +
+  '</head>' +
+  '<body>' +
+  '  <div class="header-box">' +
+  '    <div class="header-title">🎯 <?= userName ?> • <?= post ?> (पंक्ति <?= row ?>)</div>' +
+  '    <div class="header-sub">नीचे से पंचायतें व उनके अधिकृत वार्ड चुनें। टाइपिंग की कोई आवश्यकता नहीं है!</div>' +
+  '  </div>' +
+  '  <div class="top-controls">' +
+  '    <input type="text" id="searchInput" class="search-input" placeholder="🔍 पंचायत खोजें..." oninput="filterGps(this.value)">' +
+  '    <div style="display:flex; align-items:center; gap:6px;">' +
+  '      <label for="printWardInput" style="font-weight:700; font-size:12px;">पर्ची पर छपने वाला वार्ड:</label>' +
+  '      <input type="text" id="printWardInput" value="<?= curPrintWard ?>" style="width:70px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:4px; font-weight:700; text-align:center;">' +
+  '    </div>' +
+  '  </div>' +
+  '  <div class="gp-container" id="gpList"></div>' +
+  '  <div class="preview-bar" id="previewText">लोड हो रहा है...</div>' +
+  '  <div class="footer-box">' +
+  '    <button type="button" class="cancel-btn" onclick="google.script.host.close()">रद्द करें</button>' +
+  '    <button type="button" class="save-btn" id="saveBtn" onclick="doSave()">💾 शीट में सुरक्षित करें</button>' +
+  '  </div>' +
+  '  <script>' +
+  '    var allGps = JSON.parse(<?= panchayatsJson ?>);' +
+  '    var curGpsStr = "<?= curGps ?>";' +
+  '    var curWardsStr = "<?= curWardScope ?>";' +
+  '    var rowNum = "<?= row ?>";' +
+  '    var sheetName = "<?= sheetName ?>";' +
+  '    var selectedMap = {};' +
+  '    parseInitial();' +
+  '    renderList();' +
+  '    updatePreview();' +
+  '    function parseInitial() {' +
+  '      if (curWardsStr === "ALL") {' +
+  '        var gpArr = curGpsStr.split(",").map(function(s){return s.trim();}).filter(Boolean);' +
+  '        gpArr.forEach(function(g){ selectedMap[g] = "ALL"; });' +
+  '        return;' +
+  '      }' +
+  '      if (curWardsStr.includes(":")) {' +
+  '        var parts = curWardsStr.split("|");' +
+  '        parts.forEach(function(p){' +
+  '          var sp = p.split(":");' +
+  '          if (sp.length === 2) {' +
+  '            var g = sp[0].trim();' +
+  '            var w = sp[1].trim();' +
+  '            if (w === "ALL") selectedMap[g] = "ALL";' +
+  '            else selectedMap[g] = w.split(",").map(function(x){return x.trim();}).filter(Boolean);' +
+  '          }' +
+  '        });' +
+  '      } else if (curGpsStr) {' +
+  '        var gpArr = curGpsStr.split(",").map(function(s){return s.trim();}).filter(Boolean);' +
+  '        gpArr.forEach(function(g){ selectedMap[g] = "ALL"; });' +
+  '      }' +
+  '    }' +
+  '    function renderList(filter) {' +
+  '      var container = document.getElementById("gpList");' +
+  '      container.innerHTML = "";' +
+  '      var fClean = (filter || "").toLowerCase().trim();' +
+  '      allGps.forEach(function(gp){' +
+  '        if (fClean && gp.toLowerCase().indexOf(fClean) === -1) return;' +
+  '        var isSel = (selectedMap[gp] !== undefined);' +
+  '        var curVal = selectedMap[gp];' +
+  '        var card = document.createElement("div");' +
+  '        card.className = "gp-card " + (isSel ? "active" : "");' +
+  '        card.id = "card_" + gp;' +
+  '        var head = document.createElement("div");' +
+  '        head.className = "gp-head";' +
+  '        head.innerHTML = "<label class=\'gp-label\'><input type=\'checkbox\' " + (isSel ? "checked" : "") + " onchange=\'toggleGp(\\\"" + gp + "\\\", this.checked)\'> 🏛️ " + gp + "</label>";' +
+  '        var wardBox = document.createElement("div");' +
+  '        wardBox.className = "ward-box";' +
+  '        var chips = "<div class=\'ward-chips\'><span style=\'font-size:11px; font-weight:700; color:#475569;\'>वार्ड:</span> ";' +
+  '        var isAll = (curVal === "ALL" || !curVal);' +
+  '        chips += "<button type=\'button\' class=\'ward-btn " + (isAll ? "all-btn" : "") + "\' onclick=\'setAllWards(\\\"" + gp + "\\\")\'>समस्त (ALL)</button>";' +
+  '        for (var w = 1; w <= 15; w++) {' +
+  '          var wStr = String(w);' +
+  '          var isWSelected = (!isAll && Array.isArray(curVal) && curVal.indexOf(wStr) !== -1);' +
+  '          chips += "<button type=\'button\' class=\'ward-btn " + (isWSelected ? "selected" : "") + "\' onclick=\'toggleWardChip(\\\"" + gp + "\\\", \\\"" + wStr + "\\\")\'>" + w + "</button>";' +
+  '        }' +
+  '        chips += "</div>";' +
+  '        wardBox.innerHTML = chips;' +
+  '        card.appendChild(head);' +
+  '        card.appendChild(wardBox);' +
+  '        container.appendChild(card);' +
+  '      });' +
+  '    }' +
+  '    function filterGps(val) { renderList(val); }' +
+  '    function toggleGp(gp, checked) {' +
+  '      if (checked) { selectedMap[gp] = "ALL"; } else { delete selectedMap[gp]; }' +
+  '      renderList(document.getElementById("searchInput").value);' +
+  '      updatePreview();' +
+  '    }' +
+  '    function setAllWards(gp) {' +
+  '      selectedMap[gp] = "ALL";' +
+  '      renderList(document.getElementById("searchInput").value);' +
+  '      updatePreview();' +
+  '    }' +
+  '    function toggleWardChip(gp, wStr) {' +
+  '      var cur = selectedMap[gp];' +
+  '      if (cur === "ALL" || !Array.isArray(cur)) { cur = [wStr]; }' +
+  '      else {' +
+  '        var idx = cur.indexOf(wStr);' +
+  '        if (idx !== -1) cur.splice(idx, 1); else cur.push(wStr);' +
+  '        if (cur.length === 0) cur = "ALL";' +
+  '      }' +
+  '      selectedMap[gp] = cur;' +
+  '      renderList(document.getElementById("searchInput").value);' +
+  '      updatePreview();' +
+  '    }' +
+  '    function updatePreview() {' +
+  '      var keys = Object.keys(selectedMap);' +
+  '      if (keys.length === 0) {' +
+  '        document.getElementById("previewText").innerHTML = "<strong>दायरा:</strong> कोई पंचायत चयनित नहीं (कृपया ऊपर चेक करें)";' +
+  '        return;' +
+  '      }' +
+  '      var gpListStr = keys.join(", ");' +
+  '      var wardScopeParts = [];' +
+  '      keys.forEach(function(g){' +
+  '        var val = selectedMap[g];' +
+  '        if (val === "ALL" || !val) { wardScopeParts.push(g + ": ALL"); }' +
+  '        else { wardScopeParts.push(g + ": " + (Array.isArray(val) ? val.join(",") : val)); }' +
+  '      });' +
+  '      document.getElementById("previewText").innerHTML = "<strong>पंचायतें:</strong> " + gpListStr + "<br><strong>आंशिक वार्ड:</strong> " + wardScopeParts.join(" | ");' +
+  '    }' +
+  '    function doSave() {' +
+  '      var keys = Object.keys(selectedMap);' +
+  '      if (keys.length === 0) { alert("कृपया कम से कम एक पंचायत का चयन अवश्य करें!"); return; }' +
+  '      var gpListStr = keys.join(", ");' +
+  '      var wardScopeParts = [];' +
+  '      keys.forEach(function(g){' +
+  '        var val = selectedMap[g];' +
+  '        if (val === "ALL" || !val) { wardScopeParts.push(g + ": ALL"); }' +
+  '        else { wardScopeParts.push(g + ": " + (Array.isArray(val) ? val.join(",") : val)); }' +
+  '      });' +
+  '      var pWard = document.getElementById("printWardInput").value.trim() || "2";' +
+  '      var btn = document.getElementById("saveBtn");' +
+  '      btn.disabled = true; btn.textContent = "सुरक्षित हो रहा है...";' +
+  '      google.script.run' +
+  '        .withSuccessHandler(function(res){' +
+  '          if (res && res.success) { alert("✅ " + res.message); google.script.host.close(); }' +
+  '          else { alert("⚠️ त्रुटि: " + (res.error || "अज्ञात")); btn.disabled = false; btn.textContent = "सुरक्षित करें"; }' +
+  '        })' +
+  '        .withFailureHandler(function(err){' +
+  '          alert("⚠️ विफलता: " + err); btn.disabled = false; btn.textContent = "सुरक्षित करें";' +
+  '        })' +
+  '        .savePickerData({' +
+  '          row: rowNum,' +
+  '          sheetName: sheetName,' +
+  '          printWardNo: pWard,' +
+  '          allowedPanchayats: gpListStr,' +
+  '          allowedPanchayatWards: wardScopeParts.join(" | ")' +
+  '        });' +
+  '    }' +
+  '  </script>' +
+  '</body>' +
+  '</html>';
 }
