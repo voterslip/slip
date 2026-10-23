@@ -26,12 +26,14 @@ function setupAllSheets() {
   setupCandidatesSheet();
   
   SpreadsheetApp.flush();
-  try { SpreadsheetApp.getUi().alert(
-    "✅ सम्पूर्ण सेटअप सफल!\n\n" +
-    "1. 'Settings' शीट: पोर्टल नाम, मतदान तिथि, समय और मॉड्यूल कंट्रोल तैयार हैं।\n" +
-    "2. 'Users' शीट: पंच, सरपंच, पंचायत समिति व जिला परिषद यूजर्स चेकबॉक्स अनुमतियों सहित तैयार हैं।\n" +
-    "3. 'Candidates' शीट: प्रत्याशी विवरण (कमला देवी - वार्ड 2) सहित तैयार है।"
-  ); } catch(e) {}
+  try {
+    SpreadsheetApp.getUi().alert(
+      "✅ सम्पूर्ण सेटअप सफल!\n\n" +
+      "1. 'Settings' शीट: पोर्टल नाम, मतदान तिथि, समय और मॉड्यूल कंट्रोल तैयार हैं।\n" +
+      "2. 'Users' शीट: पंच, सरपंच, पंचायत समिति व जिला परिषद यूजर्स (आंशिक वार्ड कंट्रोल सहित) तैयार हैं।\n" +
+      "3. 'Candidates' शीट: प्रत्याशी विवरण (पर्ची पर छपने वाला वार्ड व पंचायतवार आंशिक वार्ड सहित) तैयार है।"
+    );
+  } catch(e) {}
 }
 
 function setupSettingsSheet() {
@@ -58,13 +60,16 @@ function setupSettingsSheet() {
     ["ENABLE_BULK_SLIPS", true, "CHECKBOX", "मत पर्ची डाउनलोड टैब चालू रखें (TRUE/FALSE)"],
     ["ENABLE_WITH_PIC_SLIPS", true, "CHECKBOX", "सचित्र पर्ची (With Pic) मास्टर स्विच"],
     ["ENABLE_CANDIDATE_PROFILE", true, "CHECKBOX", "प्रत्याशी प्रोफाइल टैब चालू रखें"],
-    ["ALLOW_CANDIDATE_BANNER", true, "CHECKBOX", "पर्ची पर प्रत्याशी अपील बैनर दिखाएं"],
-    ["DEFAULT_THERMAL_BATCH", "18", "TEXT", "थर्मल पर्ची डिफ़ॉल्ट बैच साइज़ (15, 18, 21)"],
-    ["DEFAULT_SORT_ORDER", "alpha", "TEXT", "पर्ची सॉर्ट: alpha (A-Z) या serial (सरल क्र.)"],
-    ["ADMIN_CONTACT", "7023293283", "TEXT", "हेल्पलाइन / तकनीकी सहायता मोबाइल नंबर"]
+    ["ENABLE_ADMIN_CONTROL", true, "CHECKBOX", "एडमिन कंट्रोल हब (सुपर एडमिन केवल)"],
+    ["ALLOW_PUBLIC_SEARCH", true, "CHECKBOX", "बिना लॉगिन पब्लिक सर्च अनुमति"],
+    ["ALLOW_SLIP_DOWNLOAD", true, "CHECKBOX", "पर्ची डाउनलोड अनुमति (मास्टर स्विच)"],
+    ["ALLOW_SLIP_PRINT", true, "CHECKBOX", "पर्ची प्रिंट अनुमति (मास्टर स्विच)"],
+    ["SHOW_WATERMARK", true, "CHECKBOX", "पर्ची पर वाटरमार्क दिखाएं"],
+    ["DEFAULT_USER_PASSWORD", "bhinai2026", "TEXT", "नये उपयोगकर्ताओं का डिफ़ॉल्ट पासवर्ड"]
   ];
 
-  sheet.getRange(2, 1, settingsRows.length, headers.length).setValues(settingsRows);
+  sheet.getRange(2, 1, settingsRows.length, 4).setValues(settingsRows);
+
   var checkRule = SpreadsheetApp.newDataValidation().requireCheckbox().build();
   for (var r = 0; r < settingsRows.length; r++) {
     if (settingsRows[r][2] === "CHECKBOX") {
@@ -87,7 +92,7 @@ function setupUsersSheet() {
 
   var headers = [
     "Username", "Password", "Full_Name", "Mobile", "Role",
-    "Status", "Allowed_Panchayats", "Allowed_Wards",
+    "Status", "Post", "Print_Ward_No", "Allowed_Panchayats", "Allowed_Panchayat_Wards",
     "Can_Search", "Can_Alpha", "Can_Bulk_Slips", "Can_With_Pic_Slips", "Can_Candidate_Profile",
     "Can_Print", "Can_Download", "Created_At"
   ];
@@ -102,34 +107,41 @@ function setupUsersSheet() {
   var nowStr = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd HH:mm:ss");
   var defaultUsers = [
     // 1. Super Admin: समस्त 30 पंचायतें, सभी वार्ड
-    ["admin", "admin2026", "मुख्य व्यवस्थापक (Super Admin)", "7023293283", "SUPER_ADMIN", true, "ALL", "ALL", true, true, true, true, true, true, true, nowStr],
-    // 2. पंचायत समिति सदस्य: कमला देवी (बांदनवाड़ा - वार्ड 2)
-    ["kamala", "bhinai2026", "कमला देवी (पंचायत समिति सदस्य - बांदनवाड़ा)", "9876543210", "CANDIDATE", true, "बांदनवाड़ा", "2", true, true, true, true, true, true, true, nowStr],
-    ["kamla", "bhinai2026", "कमला देवी (पंचायत समिति सदस्य - बांदनवाड़ा)", "9876543210", "CANDIDATE", true, "बांदनवाड़ा", "2", true, true, true, true, true, true, true, nowStr],
-    // 3. सरपंच यूजर: पूरी ग्राम पंचायत, सारे वार्ड (ALL)
-    ["sarpanch_kanai", "kanai2026", "सरपंच प्रत्याशी (कनईकलां)", "9829000001", "CANDIDATE", true, "कनईकलां", "ALL", true, true, true, true, true, true, true, nowStr],
-    // 4. वार्ड पंच यूजर: केवल उसका अधिकृत वार्ड (वार्ड 4) - केवल वही वार्ड खुलेगा
-    ["panch_w4", "panch2026", "वार्ड पंच प्रत्याशी (कनईकलां - वार्ड 4)", "9829000004", "CANDIDATE", true, "कनईकलां", "4", true, true, true, true, true, true, true, nowStr],
-    // 5. जिला परिषद सदस्य: मल्टीपल पंचायतें या ज़ोन
-    ["zila_parishad", "zila2026", "जिला परिषद प्रत्याशी (वार्ड 1)", "9829000005", "CANDIDATE", true, "बांदनवाड़ा, कनईकलां", "1", true, true, true, true, true, true, true, nowStr]
+    ["admin", "admin2026", "मुख्य व्यवस्थापक (Super Admin)", "7023293283", "SUPER_ADMIN", true, "मुख्य व्यवस्थापक", "ALL", "ALL", "ALL", true, true, true, true, true, true, true, nowStr],
+
+    // 2. पंचायत समिति सदस्य: कमला देवी (PS वार्ड 2) - बांदनवाड़ा (वार्ड 1,2) व देवलिया कलां (वार्ड 2,3,4,5)
+    ["kamala", "bhinai2026", "कमला देवी", "9876543210", "CANDIDATE", true, "पंचायत समिति सदस्य", "2", "बांदनवाड़ा, देवलिया कलां", "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5", true, true, true, true, true, true, true, nowStr],
+    ["kamla", "bhinai2026", "कमला देवी", "9876543210", "CANDIDATE", true, "पंचायत समिति सदस्य", "2", "बांदनवाड़ा, देवलिया कलां", "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5", true, true, true, true, true, true, true, nowStr],
+
+    // 3. जिला परिषद सदस्य: राजेन्द्र चौधरी (ZP वार्ड 15) - बांदनवाड़ा (1,2,3), देवलिया कलां (1,2,3,4) व कनईकलां (11,12,13)
+    ["zp_rajendra", "zp2026", "राजेन्द्र चौधरी", "9829000015", "CANDIDATE", true, "जिला परिषद सदस्य", "15", "बांदनवाड़ा, देवलिया कलां, कनईकलां", "बांदनवाड़ा: 1,2,3 | देवलिया कलां: 1,2,3,4 | कनईकलां: 11,12,13", true, true, true, true, true, true, true, nowStr],
+
+    // 4. सरपंच प्रत्याशी: रामेश्वर जाट (कनईकलां) - पूरी ग्राम पंचायत, सारे वार्ड खुलेंगे (ALL)
+    ["sarpanch_kanai", "kanai2026", "रामेश्वर जाट", "9829000001", "CANDIDATE", true, "सरपंच", "ALL", "कनईकलां", "ALL", true, true, true, true, true, true, true, nowStr],
+
+    // 5. वार्ड पंच प्रत्याशी: सुभाष गुर्जर (कनईकलां - वार्ड 4) - केवल वार्ड 4 खुलेगा और लॉक रहेगा
+    ["panch_w4", "panch2026", "सुभाष गुर्जर", "9829000004", "CANDIDATE", true, "वार्ड पंच", "4", "कनईकलां", "4", true, true, true, true, true, true, true, nowStr]
   ];
 
   sheet.getRange(2, 1, defaultUsers.length, headers.length).setValues(defaultUsers);
 
-  var checkCols = [6, 9, 10, 11, 12, 13, 14, 15];
+  // Checkbox validation for Status, Can_Search, Can_Alpha, Can_Bulk_Slips, Can_With_Pic_Slips, Can_Candidate_Profile, Can_Print, Can_Download
+  var checkCols = [6, 11, 12, 13, 14, 15, 16, 17];
   var checkRule = SpreadsheetApp.newDataValidation().requireCheckbox().build();
   for (var i = 0; i < checkCols.length; i++) {
     sheet.getRange(2, checkCols[i], 100, 1).setDataValidation(checkRule);
   }
 
-  sheet.setColumnWidth(1, 140);
+  sheet.setColumnWidth(1, 130);
   sheet.setColumnWidth(2, 110);
-  sheet.setColumnWidth(3, 260);
+  sheet.setColumnWidth(3, 180);
   sheet.setColumnWidth(4, 110);
-  sheet.setColumnWidth(5, 120);
-  sheet.setColumnWidth(6, 80);
-  sheet.setColumnWidth(7, 180);
+  sheet.setColumnWidth(5, 110);
+  sheet.setColumnWidth(6, 70);
+  sheet.setColumnWidth(7, 160);
   sheet.setColumnWidth(8, 120);
+  sheet.setColumnWidth(9, 200);
+  sheet.setColumnWidth(10, 320);
   sheet.setFrozenRows(1);
 }
 
@@ -139,47 +151,73 @@ function setupCandidatesSheet() {
   sheet.clear();
 
   var headers = [
-    "Username", "Password", "Candidate_Name", "Post", "Panchayat",
-    "Ward", "Symbol_Name", "Slogan", "Election_Date", "Election_Time",
-    "Mobile", "Status", "Can_Print", "Can_Download"
+    "Username", "Password", "Candidate_Name", "Post", "Print_Ward_No",
+    "Allowed_Panchayats", "Allowed_Panchayat_Wards", "Symbol_Name", "Slogan",
+    "Election_Date", "Election_Time", "Mobile", "Status", "Can_Print", "Can_Download"
   ];
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   sheet.getRange(1, 1, 1, headers.length)
     .setBackground("#4338ca")
     .setFontColor("#ffffff")
-    .setFontWeight("bold");
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center");
 
   var candData = [
+    // 1. पंचायत समिति सदस्य प्रत्याशी: कमला देवी (वार्ड 2 छपेगा, बांदनवाड़ा w1,2 और देवलिया कलां w2,3,4,5 खुलेंगे)
     [
-      "kamala", "bhinai2026", "कमला देवी", "पंचायत समिति सदस्य", "बांदनवाड़ा",
-      "2", "हाथ", "क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।",
+      "kamala", "bhinai2026", "कमला देवी", "पंचायत समिति सदस्य", "2",
+      "बांदनवाड़ा, देवलिया कलां", "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5", "हाथ",
+      "क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।",
       "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
       "9876543210", true, true, true
     ],
+    // 2. जिला परिषद सदस्य प्रत्याशी: राजेन्द्र चौधरी (वार्ड 15 छपेगा, 3 पंचायतों के आंशिक वार्ड खुलेंगे)
     [
-      "sarpanch_kanai", "kanai2026", "सरपंच प्रत्याशी", "सरपंच", "कनईकलां",
-      "ALL", "उगता सूरज", "ग्राम पंचायत के सर्वांगीण विकास हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।",
+      "zp_rajendra", "zp2026", "राजेन्द्र चौधरी", "जिला परिषद सदस्य", "15",
+      "बांदनवाड़ा, देवलिया कलां, कनईकलां", "बांदनवाड़ा: 1,2,3 | देवलिया कलां: 1,2,3,4 | कनईकलां: 11,12,13", "कमल",
+      "जिला परिषद क्षेत्र के चहुंमुखी विकास हेतु आपका अपना कर्मठ एवं विश्वस्त साथी।",
+      "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
+      "9829000015", true, true, true
+    ],
+    // 3. सरपंच प्रत्याशी: रामेश्वर जाट (पूरी ग्राम पंचायत कनईकलां, सारे वार्ड खुलेंगे, पर्ची पर केवल ग्राम पंचायत छपेगी)
+    [
+      "sarpanch_kanai", "kanai2026", "रामेश्वर जाट", "सरपंच", "ALL",
+      "कनईकलां", "ALL", "उगता सूरज",
+      "ग्राम पंचायत के सर्वांगीण विकास हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।",
       "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
       "9829000001", true, true, true
     ],
+    // 4. वार्ड पंच प्रत्याशी: सुभाष गुर्जर (कनईकलां - केवल वार्ड 4 खुलेगा और पर्ची पर वार्ड 4 छपेगा)
     [
-      "panch_w4", "panch2026", "वार्ड पंच प्रत्याशी", "वार्ड पंच", "कनईकलां",
-      "4", "पतंग", "वार्ड के विकास हेतु भारी मतों से विजयी बनावें।",
+      "panch_w4", "panch2026", "सुभाष गुर्जर", "वार्ड पंच", "4",
+      "कनईकलां", "4", "पतंग",
+      "वार्ड के विकास एवं स्वच्छता हेतु भारी मतों से विजयी बनावें।",
       "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
       "9829000004", true, true, true
     ]
   ];
+
   sheet.getRange(2, 1, candData.length, headers.length).setValues(candData);
   
   var checkRule = SpreadsheetApp.newDataValidation().requireCheckbox().build();
-  sheet.getRange(2, 12, 50, 3).setDataValidation(checkRule);
+  sheet.getRange(2, 13, 50, 3).setDataValidation(checkRule);
+
+  sheet.setColumnWidth(1, 130);
+  sheet.setColumnWidth(2, 110);
+  sheet.setColumnWidth(3, 160);
+  sheet.setColumnWidth(4, 160);
+  sheet.setColumnWidth(5, 120);
+  sheet.setColumnWidth(6, 200);
+  sheet.setColumnWidth(7, 320);
+  sheet.setColumnWidth(8, 110);
+  sheet.setColumnWidth(9, 280);
   sheet.setFrozenRows(1);
 }
 
 function refreshCheckboxes() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var checkRule = SpreadsheetApp.newDataValidation().requireCheckbox().build();
-
+  
   var sSheet = ss.getSheetByName(SHEET_SETTINGS);
   if (sSheet) {
     var sData = sSheet.getDataRange().getValues();
@@ -192,13 +230,20 @@ function refreshCheckboxes() {
 
   var uSheet = ss.getSheetByName(SHEET_USERS);
   if (uSheet) {
-    var checkCols = [6, 9, 10, 11, 12, 13, 14, 15];
+    var checkCols = [6, 11, 12, 13, 14, 15, 16, 17];
     for (var c = 0; c < checkCols.length; c++) {
       uSheet.getRange(2, checkCols[c], 100, 1).setDataValidation(checkRule);
     }
   }
 
-  try { SpreadsheetApp.getUi().alert("✅ समस्त चेकबॉक्स सफलतापूर्वक रीफ्रेश हो गए हैं!"); } catch(e) {}
+  var cSheet = ss.getSheetByName(SHEET_CANDIDATES);
+  if (cSheet) {
+    cSheet.getRange(2, 13, 50, 3).setDataValidation(checkRule);
+  }
+
+  try {
+    SpreadsheetApp.getUi().alert("✅ समस्त चेकबॉक्स सफलतापूर्वक रीफ्रेश हो गए हैं!");
+  } catch(e) {}
 }
 
 function showAppInfo() {
@@ -208,7 +253,9 @@ function showAppInfo() {
     "3. 'Execute as' में 'Me' चुनें।\n" +
     "4. 'Who has access' में 'Anyone' (सभी) चुनें।\n" +
     "5. 'Deploy' पर क्लिक करके Web App URL कॉपी कर लें।";
-  SpreadsheetApp.getUi().alert(msg);
+  try {
+    SpreadsheetApp.getUi().alert(msg);
+  } catch(e) {}
 }
 
 function doGet(e) {
@@ -369,11 +416,17 @@ function handleGetUsers(adminUsername, adminPassword) {
       mobile: String(row[3]),
       role: String(row[4]),
       status: (row[5] === true || String(row[5]).toUpperCase() === "TRUE") ? "ACTIVE" : "INACTIVE",
-      assigned_panchayats: String(row[6] || "ALL"),
-      assigned_wards: String(row[7] || "ALL"),
+      post: String(row[headers.indexOf("Post")] || ""),
+      print_ward_no: String(row[headers.indexOf("Print_Ward_No")] || ""),
+      allowed_panchayats: String(row[headers.indexOf("Allowed_Panchayats")] || "ALL"),
+      allowed_panchayat_wards: String(row[headers.indexOf("Allowed_Panchayat_Wards")] || "ALL"),
+      assigned_panchayats: String(row[headers.indexOf("Allowed_Panchayats")] || "ALL"),
+      assigned_wards: String(row[headers.indexOf("Allowed_Panchayat_Wards")] || "ALL"),
+      allowed_wards: String(row[headers.indexOf("Allowed_Panchayat_Wards")] || "ALL"),
+      ward: String(row[headers.indexOf("Print_Ward_No")] || ""),
       allowed_tabs: tabs,
-      can_print: (row[13] === true),
-      can_download: (row[14] === true)
+      can_print: (row[headers.indexOf("Can_Print")] === true),
+      can_download: (row[headers.indexOf("Can_Download")] === true)
     });
   }
 
@@ -390,6 +443,7 @@ function handleGetCandidates() {
   if (!sheet) return { success: true, candidates: [] };
 
   var data = sheet.getDataRange().getValues();
+  var headers = data[0];
   var candidates = [];
 
   for (var i = 1; i < data.length; i++) {
@@ -399,18 +453,22 @@ function handleGetCandidates() {
     candidates.push({
       username: String(row[0]),
       password: String(row[1]),
-      candidate_name: String(row[2]),
-      post: String(row[3]),
-      panchayat: String(row[4]),
-      ward: String(row[5]),
-      symbol_name: String(row[6]),
-      slogan: String(row[7]),
-      election_date: String(row[8]),
-      election_time: String(row[9]),
-      mobile: String(row[10]),
-      status: (row[11] === true || String(row[11]).toUpperCase() === "TRUE") ? "ACTIVE" : "INACTIVE",
-      can_print: (row[12] === true),
-      can_download: (row[13] === true),
+      candidate_name: String(row[headers.indexOf("Candidate_Name")]),
+      post: String(row[headers.indexOf("Post")]),
+      print_ward_no: String(row[headers.indexOf("Print_Ward_No")]),
+      ward: String(row[headers.indexOf("Print_Ward_No")]),
+      allowed_panchayats: String(row[headers.indexOf("Allowed_Panchayats")]),
+      panchayat: String(row[headers.indexOf("Allowed_Panchayats")]),
+      allowed_panchayat_wards: String(row[headers.indexOf("Allowed_Panchayat_Wards")]),
+      allowed_wards: String(row[headers.indexOf("Allowed_Panchayat_Wards")]),
+      symbol_name: String(row[headers.indexOf("Symbol_Name")]),
+      slogan: String(row[headers.indexOf("Slogan")]),
+      election_date: String(row[headers.indexOf("Election_Date")]),
+      election_time: String(row[headers.indexOf("Election_Time")]),
+      mobile: String(row[headers.indexOf("Mobile")]),
+      status: (row[headers.indexOf("Status")] === true || String(row[headers.indexOf("Status")]).toUpperCase() === "TRUE") ? "ACTIVE" : "INACTIVE",
+      can_print: (row[headers.indexOf("Can_Print")] === true),
+      can_download: (row[headers.indexOf("Can_Download")] === true),
       allowed_tabs: ["searchTab", "alphaTab", "bulkSlipTab", "withPicSlipTab", "candidateProfileTab"]
     });
   }
@@ -458,8 +516,12 @@ function handleLogin(username, password) {
           username: String(row[uCol]),
           fullName: String(row[headers.indexOf("Full_Name")]),
           role: String(row[headers.indexOf("Role")]),
+          post: String(row[headers.indexOf("Post")] || ""),
+          print_ward_no: String(row[headers.indexOf("Print_Ward_No")] || ""),
+          ward: String(row[headers.indexOf("Print_Ward_No")] || ""),
           allowed_panchayats: String(row[headers.indexOf("Allowed_Panchayats")]),
-          allowed_wards: String(row[headers.indexOf("Allowed_Wards")]),
+          allowed_panchayat_wards: String(row[headers.indexOf("Allowed_Panchayat_Wards")]),
+          allowed_wards: String(row[headers.indexOf("Allowed_Panchayat_Wards")]),
           allowed_tabs: allowedTabs,
           can_print: (isSuper || row[headers.indexOf("Can_Print")] === true),
           can_download: (isSuper || row[headers.indexOf("Can_Download")] === true)
@@ -476,37 +538,41 @@ function handleSaveCandidate(cand) {
   if (!sheet) return { success: false, error: "Candidates शीट नहीं मिली!" };
 
   var data = sheet.getDataRange().getValues();
-  var uName = String(cand.username || "").trim();
-  var rowIdx = -1;
+  var uCol = 0;
+  var targetRow = -1;
 
+  var uName = cand.username || cand.user_id;
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]).trim().toLowerCase() === uName.toLowerCase()) {
-      rowIdx = i + 1;
+    if (String(data[i][uCol]).toLowerCase() === String(uName).toLowerCase()) {
+      targetRow = i + 1;
       break;
     }
   }
 
-  var rowVals = [
-    uName,
-    cand.password || "cand2026",
-    cand.candidate_name || "",
-    cand.post || "सरपंच",
-    cand.panchayat || "",
-    cand.ward || "ALL",
-    cand.symbol_name || "उगता सूरज",
-    cand.slogan || "",
-    cand.election_date || "15 अक्टूबर 2026",
-    cand.election_time || "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
-    cand.mobile || "",
-    (cand.status !== false),
-    (cand.can_print !== false),
-    (cand.can_download !== false)
-  ];
+  if (targetRow === -1) {
+    targetRow = data.length + 1;
+    sheet.getRange(targetRow, 1).setValue(uName);
+  }
 
-  if (rowIdx > 0) {
-    sheet.getRange(rowIdx, 1, 1, rowVals.length).setValues([rowVals]);
-  } else {
-    sheet.appendRow(rowVals);
+  var headers = data[0];
+  var fieldMap = {
+    "Candidate_Name": cand.candidate_name,
+    "Post": cand.post,
+    "Print_Ward_No": cand.print_ward_no || cand.ward,
+    "Allowed_Panchayats": cand.allowed_panchayats || cand.panchayat,
+    "Allowed_Panchayat_Wards": cand.allowed_panchayat_wards || cand.allowed_wards,
+    "Symbol_Name": cand.symbol_name,
+    "Slogan": cand.slogan,
+    "Election_Date": cand.election_date,
+    "Election_Time": cand.election_time,
+    "Mobile": cand.mobile
+  };
+
+  for (var key in fieldMap) {
+    var cIdx = headers.indexOf(key);
+    if (cIdx !== -1 && fieldMap[key] !== undefined) {
+      sheet.getRange(targetRow, cIdx + 1).setValue(fieldMap[key]);
+    }
   }
 
   return { success: true, message: "प्रत्याशी विवरण सुरक्षित हो गया!" };

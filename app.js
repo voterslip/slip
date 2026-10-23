@@ -1,3 +1,63 @@
+// ==========================================================================
+// GRANULAR MULTI-GP & PARTIAL WARD PARSER FOR PS, ZP, SARPANCH & WARD PANCH
+// Supported Sheet Formats:
+// 1. "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5 | कनईकलां: 11,12,13"
+// 2. "बांदनवाड़ा(1,2), देवलिया कलां(2,3,4,5)"
+// 3. "4" (Single ward for Ward Panch)
+// 4. "ALL" (All wards for Sarpanch / Super Admin)
+// ==========================================================================
+function parseAllowedPanchayatWards(rawStr) {
+  if (!rawStr || rawStr === 'ALL' || rawStr === 'समस्त' || rawStr === 'समस्त वार्ड') {
+    return { isAll: true, defaultWards: [], map: {} };
+  }
+  const cleanStr = String(rawStr).trim();
+  if (/^\d+$/.test(cleanStr)) {
+    return { isAll: false, defaultWards: [cleanStr], map: {} };
+  }
+  const map = {};
+  if (cleanStr.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(cleanStr);
+      for (const [k, v] of Object.entries(parsed)) {
+        map[k.trim()] = Array.isArray(v) ? v.map(String) : String(v).split(',').map(s=>s.trim()).filter(Boolean);
+      }
+      return { isAll: false, defaultWards: [], map };
+    } catch(e) {}
+  }
+
+  // Check parenthesized format: "बांदनवाड़ा(1,2), देवलिया कलां(2,3,4,5)"
+  if (cleanStr.includes('(') && cleanStr.includes(')')) {
+    const regex = /([^(),|;]+)\s*\(([^)]+)\)/g;
+    let m;
+    while ((m = regex.exec(cleanStr)) !== null) {
+      const gp = m[1].trim();
+      const wList = m[2].split(',').map(s => s.trim()).filter(Boolean);
+      if (gp && wList.length > 0) map[gp] = wList;
+    }
+    if (Object.keys(map).length > 0) return { isAll: false, defaultWards: [], map };
+  }
+
+  // Check colon/pipe/semicolon format: "बांदनवाड़ा: 1,2 | देवलिया कलां: 2,3,4,5"
+  const parts = cleanStr.split(/[|;\n]/).map(s => s.trim()).filter(Boolean);
+  parts.forEach(part => {
+    if (part.includes(':')) {
+      const idx = part.indexOf(':');
+      const gp = part.substring(0, idx).trim();
+      const wardsRaw = part.substring(idx + 1).trim();
+      if (wardsRaw.toUpperCase() === 'ALL' || wardsRaw === 'समस्त') {
+        map[gp] = 'ALL';
+      } else {
+        map[gp] = wardsRaw.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    } else if (/^\d+$/.test(part)) {
+      if (!map['_default']) map['_default'] = [];
+      map['_default'].push(part);
+    }
+  });
+
+  return { isAll: Object.keys(map).length === 0 && !cleanStr, defaultWards: map['_default'] || [], map };
+}
+
 const KAMLA_DEFAULT_PHOTO = "./assets/kamala_photo.jpg";
 
 // =========================================================================
@@ -3341,33 +3401,41 @@ function getAllowedWardsList(gpCode) {
   if (isPrivileged) return 'ALL';
 
   const ov = (typeof getUserOverrides === 'function') ? (getUserOverrides()[u.id || u.username] || {}) : {};
-  const candPost = String(State.currentCandidate?.post || u.post || u.candidate?.post || '').trim();
-  const effWards = ov.allowed_wards || u.allowed_wards || u.assigned_wards || u.wards || u.ward || 'ALL';
+  const cand = State.currentCandidate || u.candidate || {};
+  const rawWardScope = ov.allowed_panchayat_wards || u.allowed_panchayat_wards || cand.allowed_panchayat_wards || ov.allowed_wards || u.allowed_wards || cand.allowed_wards || u.assigned_wards || 'ALL';
 
-  if (!effWards || effWards === 'ALL' || effWards === 'समस्त' || effWards === 'समस्त वार्ड') {
-    return 'ALL';
+  const parsed = parseAllowedPanchayatWards(rawWardScope);
+  if (parsed.isAll) return 'ALL';
+
+  // Normalize gpCode to GP Hindi Name
+  let gpNameHi = gpCode;
+  if (gpCode && State.panchayats) {
+    const gpObj = State.panchayats.find(p => p.code === gpCode || p.name_hi === gpCode || p.name_en === gpCode);
+    if (gpObj) gpNameHi = gpObj.name_hi;
   }
 
-  let wardList = [];
-  if (Array.isArray(effWards)) {
-    wardList = effWards.map(String);
-  } else if (typeof effWards === 'string') {
-    try {
-      const parsed = JSON.parse(effWards);
-      if (Array.isArray(parsed)) wardList = parsed.map(String);
-      else wardList = effWards.split(',').map(s => s.trim());
-    } catch(e) {
-      wardList = effWards.split(',').map(s => s.trim());
+  // 1. Direct match in partial ward map (e.g. "बांदनवाड़ा: 1,2")
+  if (gpNameHi && parsed.map) {
+    for (const [k, v] of Object.entries(parsed.map)) {
+      if (k === '_default') continue;
+      if (gpNameHi.includes(k) || k.includes(gpNameHi)) {
+        return (v === 'ALL') ? 'ALL' : (Array.isArray(v) ? v.map(String) : [String(v)]);
+      }
     }
   }
 
-  // Check GP match
-  const allowedGps = getAllowedGps();
-  const matchesGp = !gpCode || gpCode === 'ALL' || allowedGps.some(p => p.code === gpCode || p.name_hi === gpCode || p.name_en === gpCode);
-
-  if (matchesGp) {
-    return wardList.length > 0 ? wardList : 'ALL';
+  // 2. Default wards (e.g. "4" for Ward Panch)
+  if (parsed.defaultWards && parsed.defaultWards.length > 0) {
+    return parsed.defaultWards.map(String);
   }
+
+  // 3. Fallback: if gpCode is not restricted in map but GP is allowed
+  const allowedGps = getAllowedGps();
+  const isAllowedGp = !gpCode || gpCode === 'ALL' || allowedGps.some(p => p.code === gpCode || p.name_hi === gpCode || p.name_en === gpCode);
+  if (isAllowedGp && Object.keys(parsed.map).length === 0) {
+    return 'ALL';
+  }
+
   return [];
 }
 
@@ -6958,12 +7026,12 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
     }
   }
 
-  // Candidate Ward resolution
-  const rawSheetWard = String(candidateData.ward || candidateData.ps_zp_ward || (State.currentUser && (State.currentUser.ward || State.currentUser.allowed_wards)) || '').trim();
+  // Candidate Ward resolution ('Print_Ward_No' column takes highest priority!)
+  const rawSheetWard = String(candidateData.print_ward_no || candidateData.ward || candidateData.ps_zp_ward || (State.currentUser && (State.currentUser.print_ward_no || State.currentUser.ward)) || '').trim();
   const cleanWardNo = (rawSheetWard && rawSheetWard.toUpperCase() !== 'ALL') ? rawSheetWard : '';
   let psZpNum = cleanWardNo;
   if (!psZpNum && cPost.includes('पंचायत समिति')) psZpNum = '2';
-  if (!psZpNum && cPost.includes('जिला परिषद')) psZpNum = '1';
+  if (!psZpNum && cPost.includes('जिला परिषद')) psZpNum = '15';
 
   let postDisplay = '';
   if (cPost.includes('पंचायत समिति')) {
@@ -10542,16 +10610,19 @@ function buildWithPicSlipHtml(voter, layout, index) {
     }
   }
 
-  // WARD NUMBER FROM GOOGLE SHEET (Ward column in Candidates, or Allowed_Wards in Users)
+  // WARD NUMBER FROM GOOGLE SHEET ('Print_Ward_No' column takes highest priority!)
   let sheetWard = '';
   if (cand) {
-    sheetWard = String(cand.ward || cand.ps_zp_ward || cand.allowed_wards || cand.assigned_wards || '').trim();
+    sheetWard = String(cand.print_ward_no || cand.ward || cand.ps_zp_ward || '').trim();
   }
   if ((!sheetWard || sheetWard.toUpperCase() === 'ALL') && State.currentUser) {
-    sheetWard = String(State.currentUser.ward || State.currentUser.ps_zp_ward || State.currentUser.allowed_wards || State.currentUser.assigned_wards || '').trim();
+    sheetWard = String(State.currentUser.print_ward_no || State.currentUser.ward || State.currentUser.ps_zp_ward || '').trim();
   }
-  if ((!sheetWard || sheetWard.toUpperCase() === 'ALL') && cPost.includes('पंचायत समिति') && (cName.includes('कमला') || (cand && cand.panchayat === 'बांदनवाड़ा'))) {
-    sheetWard = '2'; // Default Ward 2 for Kamala Devi (Panchayat Samiti Bandanwara)
+  if ((!sheetWard || sheetWard.toUpperCase() === 'ALL') && cPost.includes('पंचायत समिति') && (cName.includes('कमला') || (cand && String(cand.panchayat || '').includes('बांदनवाड़ा')))) {
+    sheetWard = '2'; // Default Ward 2 for Kamala Devi (Panchayat Samiti)
+  }
+  if ((!sheetWard || sheetWard.toUpperCase() === 'ALL') && cPost.includes('जिला परिषद')) {
+    sheetWard = '15'; // Default Ward 15 for Zila Parishad
   }
   const cleanWard = (sheetWard && sheetWard.toUpperCase() !== 'ALL') ? sheetWard : '';
 
