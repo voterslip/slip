@@ -84,7 +84,24 @@
       <button type="button" class="btn btn-warning" onclick="createNewCandidate()">➕ नया प्रत्याशी जोड़ें</button>
       <button type="button" class="btn btn-primary" onclick="refreshCandidatesList()">🔄 रीफ्रेश सूची</button>
       <button type="button" class="btn btn-success" onclick="exportPortalJson()">📥 डाउनलोड portal_users.json</button>
-      <button type="button" class="btn btn-outline" onclick="copyPortalJson()">📋 कॉपी JSON</button>
+    </div>
+  </div>
+
+  <!-- Master System Settings Bar (Google Sheet Live Sync) -->
+  <div style="background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px 16px; margin-bottom:16px; box-shadow:0 2px 6px rgba(0,0,0,0.05); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <span style="font-weight:800; color:#1e3a8a; font-size:13px;">⚙️ मास्टर सिस्टम सेटिंग्स (Google Sheet Settings):</span>
+      <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:700; color:#0f172a; font-size:12px; background:#eff6ff; padding:5px 10px; border-radius:6px; border:1px solid #bfdbfe;">
+        <input type="checkbox" id="masterVoterPhotoCheck" onchange="saveMasterSetting('ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS', this.checked)">
+        <span>📷 सामान्य मतदाता पर्ची में मतदाता फोटो शामिल करें (Allow Voter Photo on Normal Slips)</span>
+      </label>
+      <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:700; color:#0f172a; font-size:12px; background:#f0fdf4; padding:5px 10px; border-radius:6px; border:1px solid #bbf7d0;">
+        <input type="checkbox" id="masterWithPicCheck" checked onchange="saveMasterSetting('ENABLE_WITH_PIC_SLIPS', this.checked)">
+        <span>🖼️ सचित्र पर्ची (With Pic) मास्टर स्विच</span>
+      </label>
+    </div>
+    <div style="font-size:11px; color:#64748b; font-weight:600;">
+      ⚡ यह सेटिंग बदलते ही सभी प्रत्याशियों व डिवाइसों पर गूगल शीट से लाइव अपडेट हो जाएगी
     </div>
   </div>
 
@@ -625,6 +642,49 @@
           .then(onJsonSuccess);
       }
     }
+
+    function saveMasterSetting(key, val) {
+      showToast("⏳ गूगल शीट में मास्टर सेटिंग अपडेट हो रही है...", "success");
+      function onSettSuccess(res) {
+        showToast("✅ गूगल शीट में सुरक्षित: " + key + " = " + val, "success");
+      }
+      function onSettError(err) {
+        showToast("⚠️ सिंक विफलता: " + err, "error");
+      }
+      if (typeof google !== "undefined" && google.script && google.script.run) {
+        var obj = {}; obj[key] = val;
+        google.script.run.withSuccessHandler(onSettSuccess).withFailureHandler(onSettError).apiSaveSettings(obj);
+      } else {
+        var url = window.location.href.split("?")[0] + "?action=saveSettings&key=" + encodeURIComponent(key) + "&value=" + encodeURIComponent(val);
+        fetch(url).then(function(r){ return r.json(); }).then(onSettSuccess).catch(onSettError);
+      }
+    }
+
+    function loadMasterSettings() {
+      function applySett(res) {
+        if (res && res.settings) {
+          var photoEl = document.getElementById("masterVoterPhotoCheck");
+          if (photoEl && res.settings.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS !== undefined) {
+            photoEl.checked = (res.settings.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS === true || String(res.settings.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS).toUpperCase() === "TRUE");
+          }
+          var withPicEl = document.getElementById("masterWithPicCheck");
+          if (withPicEl && res.settings.ENABLE_WITH_PIC_SLIPS !== undefined) {
+            withPicEl.checked = !!res.settings.ENABLE_WITH_PIC_SLIPS;
+          }
+        }
+      }
+      if (typeof google !== "undefined" && google.script && google.script.run) {
+        google.script.run.withSuccessHandler(applySett).handleGetSettings();
+      } else {
+        var url = window.location.href.split("?")[0] + "?action=getSettings";
+        fetch(url).then(function(r){ return r.json(); }).then(applySett).catch(function(){});
+      }
+    }
+
+    // Load master settings on startup
+    window.addEventListener("load", function() {
+      loadMasterSettings();
+    });
 
     function showToast(msg, type) {
       var t = document.getElementById("toastBox");

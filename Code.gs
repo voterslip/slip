@@ -264,6 +264,7 @@ function setupSettingsSheet() {
     ["ALLOW_PUBLIC_SEARCH", true, "CHECKBOX", "बिना लॉगिन पब्लिक सर्च अनुमति"],
     ["ALLOW_SLIP_DOWNLOAD", true, "CHECKBOX", "पर्ची डाउनलोड अनुमति (मास्टर स्विच)"],
     ["ALLOW_SLIP_PRINT", true, "CHECKBOX", "पर्ची प्रिंट अनुमति (मास्टर स्विच)"],
+    ["ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS", false, "CHECKBOX", "सामान्य पर्चियों में मतदाता फोटो शामिल करें (TRUE/FALSE)"],
     ["SHOW_WATERMARK", true, "CHECKBOX", "पर्ची पर वाटरमार्क दिखाएं"],
     ["DEFAULT_USER_PASSWORD", "bhinai2026", "TEXT", "नये उपयोगकर्ताओं का डिफ़ॉल्ट पासवर्ड"],
     ["LAST_CANDIDATE_SYNC", new Date().toISOString(), "TEXT", "अंतिम प्रत्याशी सिंक समय"]
@@ -469,7 +470,7 @@ function doGet(e) {
   var callback = params.callback;
 
   // JSON API कॉल्स की सूची
-  var jsonActions = ["ping", "init", "setup", "setupAllSheets", "getSettings", "getUsers", "getCandidates", "getPortalJson", "getFullJson", "syncJson", "login", "saveCandidate", "deleteCandidate"];
+  var jsonActions = ["ping", "init", "setup", "setupAllSheets", "getSettings", "saveSettings", "updateSetting", "getUsers", "getCandidates", "getPortalJson", "getFullJson", "syncJson", "login", "saveCandidate", "deleteCandidate"];
 
   // 1. यदि कोई JSON एक्शन नहीं है अथवा वेब पेज मांगा गया है, तो सीधे सम्पूर्ण प्रत्याशी प्रबंधन वेब ऐप HTML आउटपुट दें!
   if (!action || !jsonActions.includes(action) || action === "candidateSettings" || action === "candidate_settings" || action === "html" || action === "admin") {
@@ -508,6 +509,22 @@ function doGet(e) {
 
       case "getSettings":
         res = handleGetSettings();
+        break;
+
+      case "saveSettings":
+      case "updateSetting":
+        var sData = {};
+        if (params.settings) {
+          try { sData = JSON.parse(params.settings); } catch(ex) { sData = params; }
+        } else if (params.key && params.value !== undefined) {
+          var pVal = params.value;
+          if (params.value === "true" || params.value === true) pVal = true;
+          else if (params.value === "false" || params.value === false) pVal = false;
+          sData[params.key] = pVal;
+        } else {
+          sData = params;
+        }
+        res = handleSaveSettings(sData);
         break;
 
       case "getUsers":
@@ -624,17 +641,36 @@ function handleGetSettings() {
 function handleSaveSettings(newSettings) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_SETTINGS);
+  if (!sheet || sheet.getDataRange().getLastRow() <= 1) {
+    setupSettingsSheet();
+    sheet = ss.getSheetByName(SHEET_SETTINGS);
+  }
   if (!sheet) return { success: false, error: "Settings शीट नहीं मिली!" };
 
   var data = sheet.getDataRange().getValues();
+  var existingKeys = {};
   for (var i = 1; i < data.length; i++) {
     var key = String(data[i][0]).trim();
-    if (key && newSettings[key] !== undefined) {
-      sheet.getRange(i + 1, 2).setValue(newSettings[key]);
-    }
+    if (key) existingKeys[key] = i + 1;
   }
 
-  return { success: true, message: "सेटिंग्स सफलतापूर्वक अपडेट हुईं!" };
+  for (var k in newSettings) {
+    if (newSettings[k] !== undefined) {
+      if (existingKeys[k]) {
+        sheet.getRange(existingKeys[k], 2).setValue(newSettings[k]);
+      } else {
+        var newRow = sheet.getLastRow() + 1;
+        var type = (typeof newSettings[k] === "boolean") ? "CHECKBOX" : "TEXT";
+        sheet.getRange(newRow, 1, 1, 4).setValues([[k, newSettings[k], type, "अपडेटेड सेटिंग"]]);
+      }
+    }
+  }
+  SpreadsheetApp.flush();
+  return { success: true, message: "सेटिंग्स गूगल शीट में सफलतापूर्वक अपडेट हुईं!", settings: handleGetSettings().settings };
+}
+
+function apiSaveSettings(newSettings) {
+  return handleSaveSettings(newSettings);
 }
 
 /**

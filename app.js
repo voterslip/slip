@@ -7209,8 +7209,12 @@ function buildExactOfficialSlipInnerHtml(voter) {
   const boothName = (bInfo && (bInfo.name || bInfo.name_hi)) || voter.polling_station_name || 'राजकीय उच्च माध्यमिक विद्यालय';
   const boothNo = (bInfo && bInfo.booth_no) || voter.polling_station_no || '1';
 
-  // Super Admin Voter Photo Power
-  const showVoterPhoto = !!(State.allowVoterPhotoOnNormalSlips);
+  // Candidate individual permission OR Global Google Sheet Setting
+  let candAllowsPhoto = false;
+  if (State.currentUser && State.currentUser.candidate) {
+    candAllowsPhoto = !!(State.currentUser.candidate.can_normal_slip_photo || State.currentUser.can_normal_slip_photo);
+  }
+  const showVoterPhoto = !!(State.allowVoterPhotoOnNormalSlips || candAllowsPhoto);
   let voterPhotoHtml = '';
   if (showVoterPhoto) {
     const photoUrl = (typeof getWithPicSlipCutUrl === 'function') ? getWithPicSlipCutUrl(voter) : (voter.photo_url || '');
@@ -11263,7 +11267,7 @@ function onWithPicCandidateChanged(uName) {
   }
 }
 
-// Super Admin Voter Photo Power on Normal / Bulk Slips
+// Super Admin Voter Photo Power on Normal / Bulk Slips (Google Sheet Live Sync)
 function toggleNormalSlipVoterPhoto(enabled) {
   State.allowVoterPhotoOnNormalSlips = !!enabled;
   try {
@@ -11273,7 +11277,20 @@ function toggleNormalSlipVoterPhoto(enabled) {
   const checkEl = document.getElementById('normalSlipVoterPhotoCheck');
   if (checkEl) checkEl.checked = !!enabled;
 
-  showToast(enabled ? '📷 सामान्य पर्चियों में मतदाता फोटो सक्रिय की गई' : '⚫ सामान्य पर्चियां मूल B&W मोड में सेट की गई');
+  showToast(enabled ? '⏳ गूगल शीट में सेटिंग अपडेट हो रही है (मतदाता फोटो ON)...' : '⏳ गूगल शीट में सेटिंग अपडेट हो रही है (मतदाता फोटो OFF)...');
+
+  // Live Sync to Google Sheet Settings via Apps Script API
+  const url = getAppsScriptUrl();
+  const sep = url.includes('?') ? '&' : '?';
+  const saveUrl = `${url}${sep}action=saveSettings&key=ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS&value=${enabled}&_t=${Date.now()}`;
+
+  fetch(saveUrl, { mode: 'no-cors' })
+    .then(() => {
+      showToast(enabled ? '✅ गूगल शीट में सुरक्षित: सामान्य पर्चियों में मतदाता फोटो सक्रिय!' : '✅ गूगल शीट में सुरक्षित: सामान्य पर्चियां मूल B&W मोड में सेट!');
+    })
+    .catch(err => {
+      console.warn('Sheet settings sync warning:', err);
+    });
 
   if (typeof updateBulkGenerator === 'function') updateBulkGenerator();
   if (State.currentSlipVoter && typeof renderModalCandidateSlip === 'function') {
@@ -11281,10 +11298,40 @@ function toggleNormalSlipVoterPhoto(enabled) {
   }
 }
 
-// Hook into DOMContentLoaded or window load to initialize candidate selectors
+// Global Settings Sync from Google Sheet
+async function syncGlobalSettingsFromSheet() {
+  const url = getAppsScriptUrl();
+  if (!url) return;
+  const sep = url.includes('?') ? '&' : '?';
+  try {
+    const res = await fetch(`${url}${sep}action=getSettings&_t=${Date.now()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && data.settings) {
+        if (data.settings.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS !== undefined) {
+          const isAllowed = (data.settings.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS === true || String(data.settings.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS).toUpperCase() === 'TRUE');
+          State.allowVoterPhotoOnNormalSlips = isAllowed;
+          const c = document.getElementById('normalSlipVoterPhotoCheck');
+          if (c) c.checked = isAllowed;
+        }
+        if (data.settings.ELECTION_DATE) {
+          State.electionDate = data.settings.ELECTION_DATE;
+        }
+        if (data.settings.ELECTION_TIME) {
+          State.electionTime = data.settings.ELECTION_TIME;
+        }
+        if (typeof updateBulkGenerator === 'function') updateBulkGenerator();
+      }
+    }
+  } catch(e) {
+    console.warn('Failed to sync settings from Google Sheet:', e);
+  }
+}
+
+// Hook into DOMContentLoaded or window load to initialize candidate selectors & sheet settings
 window.addEventListener('load', () => {
   setTimeout(() => {
-    // Restore voter photo toggle if saved
+    // 1. Restore local cache first
     try {
       const savedPhotoPref = localStorage.getItem('portal_allow_voter_photo_normal');
       if (savedPhotoPref === 'true') {
@@ -11294,9 +11341,12 @@ window.addEventListener('load', () => {
       }
     } catch(_) {}
 
+    // 2. Fetch live settings directly from Google Sheet (Overrides local cache with authoritative sheet value)
+    syncGlobalSettingsFromSheet();
+
     populateAllCandidateSelectors();
 
-    // Auto-load embedded Apps Script Iframe in Candidate Profile Tab
+    // 3. Auto-load embedded Apps Script Iframe in Candidate Profile Tab
     const iframe = document.getElementById('candidateSettingsIframe');
     if (iframe && (!iframe.src || iframe.src === 'about:blank' || iframe.src === window.location.href)) {
       const url = getAppsScriptUrl();
