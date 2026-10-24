@@ -8816,15 +8816,24 @@ async function handleSelfPasswordSubmit(event) {
     }).catch(e => console.warn('Local password change notice:', e.message));
   } catch(e) {}
 
+  // 2. Also update candidate profile tab password input if present
+  const tabPassInp = document.getElementById('candidateTabPasswordInput');
+  if (tabPassInp) tabPassInp.value = newPass;
+
   // 3. Immediately forward to Google Apps Script (Live Google Sheet)
   try {
     if (typeof postToAppsScript === 'function') {
-      postToAppsScript({
-        action: 'updatePassword',
+      const res = await postToAppsScript({
+        action: 'saveCandidate',
         username: username,
+        password: newPass,
         newPassword: newPass,
         adminUsername: username
       });
+      if (res && res.success) {
+        showToast(`✅ पासवर्ड गूगल शीट ('Users') में तुरंत सुरक्षित हो गया!`, 'success');
+        return;
+      }
     }
   } catch(e) {}
 
@@ -11189,10 +11198,11 @@ async function saveCandidatePasswordFromTab() {
     sessionStorage.setItem('panchayat_user_session', JSON.stringify(u));
   } catch(e) {}
 
-  // 2. Direct Sync to Google Sheet
+  // 2. Direct Sync to Google Sheet (using saveCandidate with password for 100% cloud compatibility)
   const res = await postToAppsScript({
-    action: 'updatePassword',
+    action: 'saveCandidate',
     username: uName,
+    password: newPass,
     newPassword: newPass,
     adminUsername: uName
   });
