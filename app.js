@@ -2438,10 +2438,24 @@ function getVoterPhotoUrl(voter) {
   if (pEn) {
     const folder = FOLDER_MAP[pEn.toLowerCase()] || pEn;
     const wNum = String(wardNo).padStart(2, '0');
-    return `https://raw.githubusercontent.com/Jit9763/voter-photos/main/${folder}/W${wNum}/${serialNo}.webp`;
+    return `./photos/${folder}/W${wNum}/${serialNo}.webp`;
   }
 
   return voter.photo_url || voter.photo || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(voter.epic_no || voter.epic || serialNo || '1')}`;
+}
+
+
+function onVoterImgError(img, folder, wNum, serialNo) {
+  if (!img.dataset.fbStep) {
+    img.dataset.fbStep = "1";
+    img.src = `https://raw.githubusercontent.com/voterslip/slip/main/photos/${folder}/W${wNum}/${serialNo}.webp`;
+  } else if (img.dataset.fbStep === "1") {
+    img.dataset.fbStep = "2";
+    img.src = `https://raw.githubusercontent.com/Jit9763/voter-photos/main/${folder}/W${wNum}/${serialNo}.webp`;
+  } else {
+    img.onerror = null;
+    img.src = 'https://api.dicebear.com/7.x/identicon/svg?seed=' + encodeURIComponent(serialNo || 'voter');
+  }
 }
 
 function getVoterSlipCutUrl(voter) {
@@ -7353,19 +7367,15 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
             else if (State.currentUser && State.currentUser.candidate) candAllows = !!(State.currentUser.candidate.can_normal_slip_photo || State.currentUser.can_normal_slip_photo);
             const showPhoto = !!(State.allowVoterPhotoOnNormalSlips || candAllows);
             if (!showPhoto) return '';
-            const photoUrl = (typeof getWithPicSlipCutUrl === 'function') ? getWithPicSlipCutUrl(voter) : (voter.photo_url || '');
+            const photoUrl = (typeof getVoterPhotoUrl === 'function') ? getVoterPhotoUrl(voter) : (voter.photo_url || '');
             const rawWard = String(voter.ward_no || '1').replace(/\D/g, '');
             const wNum = String(parseInt(rawWard, 10) || 1).padStart(2, '0');
             const serialNo = String(voter.serial_no || '1');
             const pEn = voter.panchayat_en || (voter.gram_panchayat && typeof getPanchayatEnglishName === 'function' ? getPanchayatEnglishName(voter.gram_panchayat) : 'Badgaon');
             const isSlipCut = photoUrl && (photoUrl.includes('voter_slips') || photoUrl.endsWith('.webp') || photoUrl.endsWith('.png'));
             return `
-              <div class="mini-voter-photo-box" style="width:64px; height:82px; border:1.5px solid #000; background:#f8fafc; flex-shrink:0; overflow:hidden; position:relative; margin-left:8px; border-radius:2px; box-sizing:border-box;">
-                ${isSlipCut ? `
-                  <img src="${photoUrl}" alt="Photo" style="position:absolute; right:-5px; top:-12px; height:118%; width:auto; max-width:none; display:block;" onerror="this.onerror=null; if(typeof onWithPicImgError === 'function') onWithPicImgError(this, '${pEn}', '${wNum}', '${serialNo}');" />
-                ` : `
-                  <img src="${photoUrl}" alt="Photo" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://api.dicebear.com/7.x/identicon/svg?seed=voter';" />
-                `}
+              <div class="mini-voter-photo-box" style="width:64px; height:80px; border:1.5px solid #000; background:#ffffff; flex-shrink:0; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative; margin-left:8px; border-radius:2px; box-sizing:border-box;">
+                <img src="${photoUrl}" alt="Photo" style="width:100%; height:100%; object-fit:cover; object-position:center top; display:block;" onerror="this.onerror=null; if(typeof onVoterImgError === 'function') onVoterImgError(this, '${pEn}', '${wNum}', '${serialNo}'); else this.src='https://api.dicebear.com/7.x/identicon/svg?seed=voter';" />
               </div>
             `;
           })()}
@@ -7400,7 +7410,7 @@ function buildExactOfficialSlipInnerHtml(voter) {
   const showVoterPhoto = !!(State.allowVoterPhotoOnNormalSlips || candAllowsPhoto);
   let voterPhotoHtml = '';
   if (showVoterPhoto) {
-    const photoUrl = (typeof getWithPicSlipCutUrl === 'function') ? getWithPicSlipCutUrl(voter) : (voter.photo_url || '');
+    const photoUrl = (typeof getVoterPhotoUrl === 'function') ? getVoterPhotoUrl(voter) : (voter.photo_url || '');
     const rawWard = String(voter.ward_no || '1').replace(/\D/g, '');
     const wNum = String(parseInt(rawWard, 10) || 1).padStart(2, '0');
     const serialNo = String(voter.serial_no || '1');
@@ -7408,13 +7418,9 @@ function buildExactOfficialSlipInnerHtml(voter) {
     const isSlipCut = photoUrl && (photoUrl.includes('voter_slips') || photoUrl.endsWith('.webp') || photoUrl.endsWith('.png'));
 
     voterPhotoHtml = `
-      <div class="mini-voter-photo-box" style="width:64px; height:82px; border:1.5px solid #000; background:#f8fafc; flex-shrink:0; overflow:hidden; position:relative; margin-left:8px; border-radius:2px; box-sizing:border-box;">
-        ${isSlipCut ? `
-          <img src="${photoUrl}" alt="Photo" style="position:absolute; right:-5px; top:-12px; height:118%; width:auto; max-width:none; display:block;" onerror="this.onerror=null; if(typeof onWithPicImgError === 'function') onWithPicImgError(this, '${pEn}', '${wNum}', '${serialNo}');" />
-        ` : `
-          <img src="${photoUrl}" alt="Photo" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://api.dicebear.com/7.x/identicon/svg?seed=voter';" />
-        `}
-      </div>
+      <div class="mini-voter-photo-box" style="width:64px; height:80px; border:1.5px solid #000; background:#ffffff; flex-shrink:0; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative; margin-left:8px; border-radius:2px; box-sizing:border-box;">
+                <img src="${photoUrl}" alt="Photo" style="width:100%; height:100%; object-fit:cover; object-position:center top; display:block;" onerror="this.onerror=null; if(typeof onVoterImgError === 'function') onVoterImgError(this, '${pEn}', '${wNum}', '${serialNo}'); else this.src='https://api.dicebear.com/7.x/identicon/svg?seed=voter';" />
+              </div>
     `;
   }
 

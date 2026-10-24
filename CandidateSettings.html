@@ -582,13 +582,8 @@
         showToast("⚠️ नेटवर्क विफलता: " + err, "error");
       }
 
-      if (typeof google !== "undefined" && google.script && google.script.run) {
-        google.script.run
-          .withSuccessHandler(onSaveSuccess)
-          .withFailureHandler(onSaveError)
-          .apiSaveCandidate(candData);
-      } else {
-        var sUrl = (window.location.href.indexOf("script.google.com") !== -1) ? window.location.href.split("?")[0] : "https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec";
+      function executeSaveViaFetch() {
+        var sUrl = "https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec";
         fetch(sUrl, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -596,7 +591,22 @@
         })
         .then(function(r) { return r.json(); })
         .then(onSaveSuccess)
-        .catch(onSaveError);
+        .catch(function(err) {
+          btn.disabled = false; btn.textContent = "💾 गूगल शीट में सुरक्षित करें (Save to Google Sheet)";
+          showToast("⚠️ नेटवर्क विफलता: " + err, "error");
+        });
+      }
+
+      if (typeof google !== "undefined" && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(onSaveSuccess)
+          .withFailureHandler(function(err) {
+            console.warn("google.script.run failed, trying POST fetch fallback:", err);
+            executeSaveViaFetch();
+          })
+          .apiSaveCandidate(candData);
+      } else {
+        executeSaveViaFetch();
       }
     }
 
@@ -617,16 +627,25 @@
         }
       }
 
-      if (typeof google !== "undefined" && google.script && google.script.run) {
-        google.script.run.withSuccessHandler(onDelSuccess).apiDeleteCandidate(u);
-      } else {
-        fetch(window.location.href, {
+      function executeDeleteViaFetch() {
+        var sUrl = "https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec";
+        fetch(sUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({ action: "deleteCandidate", username: u })
         })
         .then(function(r) { return r.json(); })
-        .then(onDelSuccess);
+        .then(onDelSuccess)
+        .catch(function(err) { showToast("⚠️ हटा नहीं सका: " + err, "error"); });
+      }
+
+      if (typeof google !== "undefined" && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(onDelSuccess)
+          .withFailureHandler(function(err) { executeDeleteViaFetch(); })
+          .apiDeleteCandidate(u);
+      } else {
+        executeDeleteViaFetch();
       }
     }
 
@@ -641,12 +660,21 @@
           showToast("✅ सूची रीफ्रेश हो गई (" + candidates.length + " प्रत्याशी)", "success");
         }
       }
-      if (typeof google !== "undefined" && google.script && google.script.run) {
-        google.script.run.withSuccessHandler(onListSuccess).apiGetCandidates();
-      } else {
-        fetch(window.location.href + (window.location.href.indexOf("?") === -1 ? "?" : "&") + "action=getCandidates")
+      function executeRefreshViaFetch() {
+        var sUrl = "https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec?action=getCandidates&_t=" + Date.now();
+        fetch(sUrl)
           .then(function(r) { return r.json(); })
-          .then(onListSuccess);
+          .then(onListSuccess)
+          .catch(function(err) { showToast("⚠️ प्रत्याशी लोड नहीं हुए: " + err, "error"); });
+      }
+
+      if (typeof google !== "undefined" && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(onListSuccess)
+          .withFailureHandler(function(err) { executeRefreshViaFetch(); })
+          .apiGetCandidates();
+      } else {
+        executeRefreshViaFetch();
       }
     }
 

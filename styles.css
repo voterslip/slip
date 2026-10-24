@@ -6182,3 +6182,31 @@ html.is-superadmin-session #topbarSyncButton {
   overflow: visible !important;
   line-height: 1.25 !important;
 }
+
+/* Crisp Centered Passport Photo Box for Voter Slips */
+.mini-voter-photo-box {
+  width: 64px !important;
+  height: 80px !important;
+  border: 1.5px solid #000000 !important;
+  background: #ffffff !important;
+  flex-shrink: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative !important;
+  margin-left: 8px !important;
+  border-radius: 2px !important;
+  box-sizing: border-box !important;
+}
+
+.mini-voter-photo-box img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center top !important;
+  display: block !important;
+  position: static !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+}
