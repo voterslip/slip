@@ -2522,7 +2522,7 @@ const State = {
   config: {
     adminSheetUrl: '',
     voterSheetUrl: '',
-    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbwHyIpZL75c5mx1HliY9GrsRsVnqYN5USq5acfX-93yWvbi7CP4P0lk3a0-ORMLzdM5VA/exec'
+    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbw0FvmqiYAl7kCzj9GWaS5N753qlQYbkMaOSSUaOuIblev-fG8yvUrtQVphMU16XYv_cw/exec'
   }
 };
 
@@ -11125,7 +11125,7 @@ function getAppsScriptUrl() {
   return (State.config && State.config.appsScriptUrl) ||
     localStorage.getItem('panchayat_apps_script_url') ||
     (window.PORTAL_SETTINGS_DATA && window.PORTAL_SETTINGS_DATA.google_sheet_sync && window.PORTAL_SETTINGS_DATA.google_sheet_sync.apps_script_url) ||
-    'https://script.google.com/macros/s/AKfycbwHyIpZL75c5mx1HliY9GrsRsVnqYN5USq5acfX-93yWvbi7CP4P0lk3a0-ORMLzdM5VA/exec';
+    'https://script.google.com/macros/s/AKfycbw0FvmqiYAl7kCzj9GWaS5N753qlQYbkMaOSSUaOuIblev-fG8yvUrtQVphMU16XYv_cw/exec';
 }
 
 /**
