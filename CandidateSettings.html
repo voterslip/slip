@@ -763,6 +763,30 @@
       var uName = (currentAuthRole === 'ADMIN') ? 'admin' : document.getElementById("authCandUsernameSelect").value;
       if (!uName) uName = 'admin';
 
+      // 1. Instant Verification: Super Admin default passwords
+      if (currentAuthRole === 'ADMIN' && (pass === "admin2026" || pass === "bhinai2026" || pass === "BHINAI123")) {
+        currentAuthUser = { username: "admin", role: "SUPER_ADMIN", fullName: "मुख्य व्यवस्थापक (Super Admin)" };
+        sessionStorage.setItem("cs_auth_user", JSON.stringify(currentAuthUser));
+        document.getElementById("authReviewModal").style.display = "none";
+        applyAuthPermissions(currentAuthUser);
+        showToast("✅ सुपर एडमिन प्रमाणीकरण सफल!", "success");
+        return;
+      }
+
+      // 2. Instant Verification: Candidate from loaded list
+      if (currentAuthRole === 'CANDIDATE' && Array.isArray(candidates) && candidates.length > 0) {
+        var matchCand = candidates.find(function(x) { return x.username.toLowerCase() === uName.toLowerCase(); });
+        if (matchCand && matchCand.password && matchCand.password.trim() === pass) {
+          currentAuthUser = { username: uName, role: "CANDIDATE", fullName: (matchCand.candidate_name || uName) };
+          sessionStorage.setItem("cs_auth_user", JSON.stringify(currentAuthUser));
+          document.getElementById("authReviewModal").style.display = "none";
+          applyAuthPermissions(currentAuthUser);
+          showToast("✅ प्रत्याशी '" + (matchCand.candidate_name || uName) + "' प्रमाणीकरण सफल!", "success");
+          return;
+        }
+      }
+
+      // 3. Fallback: Online verification via API
       errEl.style.display = "none";
       if (btn) { btn.disabled = true; btn.textContent = "⏳ प्रमाणीकरण हो रहा है..."; }
 
@@ -775,40 +799,17 @@
           applyAuthPermissions(currentAuthUser);
           showToast("✅ " + (currentAuthUser.fullName || currentAuthUser.username) + " प्रमाणीकरण सफल!", "success");
         } else {
-          // Fallback to local memory check if sheet offline
-          var c = candidates.find(function(x) { return x.username.toLowerCase() === uName.toLowerCase(); });
-          var validPass = (c && c.password) ? c.password : (uName === "admin" ? "admin2026" : "bhinai2026");
-          if (pass === validPass || pass === "admin2026" || pass === "bhinai2026" || pass === "BHINAI123") {
-            currentAuthUser = { username: uName, role: (currentAuthRole === 'ADMIN' ? 'SUPER_ADMIN' : 'CANDIDATE'), fullName: (c ? c.candidate_name : uName) };
-            sessionStorage.setItem("cs_auth_user", JSON.stringify(currentAuthUser));
-            document.getElementById("authReviewModal").style.display = "none";
-            applyAuthPermissions(currentAuthUser);
-            showToast("✅ प्रमाणीकरण सफल (ऑफ़लाइन मान्य)!", "success");
-          } else {
-            errEl.textContent = "❌ " + ((res && res.error) ? res.error : "गलत पासवर्ड! कृपया सही पासवर्ड दर्ज करें।");
-            errEl.style.display = "block";
-          }
+          errEl.textContent = "❌ " + ((res && res.error) ? res.error : "गलत पासवर्ड! कृपया सही पासवर्ड दर्ज करें।");
+          errEl.style.display = "block";
         }
       }
 
       function onAuthFailure(err) {
         if (btn) { btn.disabled = false; btn.textContent = "🔓 प्रवेश करें (Verify & Login)"; }
-        // Local memory fallback
-        var c = candidates.find(function(x) { return x.username.toLowerCase() === uName.toLowerCase(); });
-        var validPass = (c && c.password) ? c.password : (uName === "admin" ? "admin2026" : "bhinai2026");
-        if (pass === validPass || pass === "admin2026" || pass === "bhinai2026" || pass === "BHINAI123") {
-          currentAuthUser = { username: uName, role: (currentAuthRole === 'ADMIN' ? 'SUPER_ADMIN' : 'CANDIDATE'), fullName: (c ? c.candidate_name : uName) };
-          sessionStorage.setItem("cs_auth_user", JSON.stringify(currentAuthUser));
-          document.getElementById("authReviewModal").style.display = "none";
-          applyAuthPermissions(currentAuthUser);
-          showToast("✅ प्रमाणीकरण सफल!", "success");
-        } else {
-          errEl.textContent = "❌ गलत पासवर्ड! (सर्वर: " + err + ")";
-          errEl.style.display = "block";
-        }
+        errEl.textContent = "❌ गलत पासवर्ड! (" + err + ")";
+        errEl.style.display = "block";
       }
 
-      // Live Google Apps Script Auth Call
       if (typeof google !== "undefined" && google.script && google.script.run) {
         google.script.run.withSuccessHandler(onAuthSuccess).withFailureHandler(onAuthFailure).apiLogin(uName, pass);
       } else {
