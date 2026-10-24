@@ -266,9 +266,20 @@
   <div id="toastBox" class="toast"></div>
 
   <script>
-    var candidates = ' + candidatesJson + ';
-    var officialGps = ' + gpsJson + ';
-    var officialSymbols = ' + symbolsJson + ';
+    var candidates = [];
+    var officialGps = [
+      "कनईकला", "करांटी", "कैरोंट", "खेडी", "कुम्हारिया",
+      "गुढाखुर्द", "घणा", "चापानेरी", "छछून्दरा", "धांतोल",
+      "देवपुरा", "देवलियाकलां", "नागोला", "नान्दसी", "पड़ांगा",
+      "पाडलिया", "बगराई", "बड़गांव", "बड़ली", "बांदनवाड़ा",
+      "बूबकिया", "भिनाय", "राममालिया", "राताकोट", "लामगरा",
+      "सिंगावल", "सोबडी", "सोलखुर्द", "हियालिया", "एकलसिंहा"
+    ];
+    var officialSymbols = [
+      "हाथ", "कमल", "उगता सूरज", "पतंग", "बोतल", "साइकिल",
+      "गिलास", "कार", "ताला-चाबी", "बल्ला", "पंखा", "अलमारी", "सिलेंडर", "मोमबत्ती",
+      "टेलीविजन", "मेज", "कुर्सी", "कप-प्लेट", "कैमरा", "किताब", "ट्रेक्टर", "रेल का इंजन"
+    ];
     var activeCandidate = null;
     var currentPhotoBase64 = "";
 
@@ -276,12 +287,8 @@
 
     function initApp() {
       populateDropdowns();
-      renderCandidatesList();
-      if (candidates.length > 0) {
-        selectCandidate(candidates[0].username);
-      } else {
-        createNewCandidate();
-      }
+      checkAuthOnLoad();
+      refreshCandidatesList();
     }
 
     function populateDropdowns() {
@@ -596,7 +603,9 @@
       function onListSuccess(res) {
         if (res && res.candidates) {
           candidates = res.candidates;
+          populateAuthCandidatesDropdown();
           renderCandidatesList();
+          if (!activeCandidate && candidates.length > 0) { selectCandidate(candidates[0].username); }
           showToast("✅ सूची रीफ्रेश हो गई (" + candidates.length + " प्रत्याशी)", "success");
         }
       }
