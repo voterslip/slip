@@ -7332,9 +7332,9 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
             const pEn = voter.panchayat_en || (voter.gram_panchayat && typeof getPanchayatEnglishName === 'function' ? getPanchayatEnglishName(voter.gram_panchayat) : 'Badgaon');
             const isSlipCut = photoUrl && (photoUrl.includes('voter_slips') || photoUrl.endsWith('.webp') || photoUrl.endsWith('.png'));
             return `
-              <div class="mini-voter-photo-box" style="width:68px; height:84px; border:1.5px solid #000; background:#fff; flex-shrink:0; overflow:hidden; position:relative; margin-left:8px; border-radius:2px; box-sizing:border-box;">
+              <div class="mini-voter-photo-box" style="width:64px; height:82px; border:1.5px solid #000; background:#f8fafc; flex-shrink:0; overflow:hidden; position:relative; margin-left:8px; border-radius:2px; box-sizing:border-box;">
                 ${isSlipCut ? `
-                  <img src="${photoUrl}" alt="Photo" style="position:absolute; right:0; top:0; height:100%; width:auto; max-width:none; display:block;" onerror="this.onerror=null; if(typeof onWithPicImgError === 'function') onWithPicImgError(this, '${pEn}', '${wNum}', '${serialNo}');" />
+                  <img src="${photoUrl}" alt="Photo" style="position:absolute; right:-5px; top:-12px; height:118%; width:auto; max-width:none; display:block;" onerror="this.onerror=null; if(typeof onWithPicImgError === 'function') onWithPicImgError(this, '${pEn}', '${wNum}', '${serialNo}');" />
                 ` : `
                   <img src="${photoUrl}" alt="Photo" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://api.dicebear.com/7.x/identicon/svg?seed=voter';" />
                 `}
@@ -7380,9 +7380,9 @@ function buildExactOfficialSlipInnerHtml(voter) {
     const isSlipCut = photoUrl && (photoUrl.includes('voter_slips') || photoUrl.endsWith('.webp') || photoUrl.endsWith('.png'));
 
     voterPhotoHtml = `
-      <div class="mini-voter-photo-box" style="width:68px; height:84px; border:1.5px solid #000; background:#fff; flex-shrink:0; overflow:hidden; position:relative; margin-left:8px; border-radius:2px; box-sizing:border-box;">
+      <div class="mini-voter-photo-box" style="width:64px; height:82px; border:1.5px solid #000; background:#f8fafc; flex-shrink:0; overflow:hidden; position:relative; margin-left:8px; border-radius:2px; box-sizing:border-box;">
         ${isSlipCut ? `
-          <img src="${photoUrl}" alt="Photo" style="position:absolute; right:0; top:0; height:100%; width:auto; max-width:none; display:block;" onerror="this.onerror=null; if(typeof onWithPicImgError === 'function') onWithPicImgError(this, '${pEn}', '${wNum}', '${serialNo}');" />
+          <img src="${photoUrl}" alt="Photo" style="position:absolute; right:-5px; top:-12px; height:118%; width:auto; max-width:none; display:block;" onerror="this.onerror=null; if(typeof onWithPicImgError === 'function') onWithPicImgError(this, '${pEn}', '${wNum}', '${serialNo}');" />
         ` : `
           <img src="${photoUrl}" alt="Photo" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://api.dicebear.com/7.x/identicon/svg?seed=voter';" />
         `}
