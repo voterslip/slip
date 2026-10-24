@@ -7039,8 +7039,8 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
   const electionDate = candidateData.election_date || getGlobalElectionDate();
   const electionTime = candidateData.election_time || getGlobalElectionTime();
 
-  const isKamalaCandidate = (candidateData.candidate_name && candidateData.candidate_name.includes('कमला')) ||
-    (candidateData.username === 'kamla' || candidateData.username === 'kamala') ||
+  const isKamalaCandidate = (candidateData && (candidateData.username || candidateData.candidate_name)) ?
+    (candidateData.username === 'kamla' || candidateData.username === 'kamala' || (candidateData.candidate_name && candidateData.candidate_name.includes('कमला'))) :
     (State.currentUser && (State.currentUser.username === 'kamala' || State.currentUser.username === 'kamla'));
 
   let cName = candidateData.candidate_name || (State.currentUser && (State.currentUser.candidate_name || State.currentUser.full_name || State.currentUser.name)) || (isKamalaCandidate ? 'कमला देवी' : (voter.gram_panchayat ? 'प्रत्याशी ' + voter.gram_panchayat : 'प्रत्याशी'));
@@ -10594,18 +10594,17 @@ function onWithPicImgError(img, folder, wNum, serialNo) {
 }
 
 function buildWithPicSlipHtml(voter, layout, index) {
-  // 1. Candidate Data Resolution from Google Sheet / Current Session
   // 1. Candidate Data Resolution (Per-Candidate Dynamic Logic)
   let cand = null;
 
-  // A. Priority 1: Candidate explicitly chosen via With-Pic candidate selector dropdown
-  if (State.selectedWithPicCandidateId && State.selectedWithPicCandidateId !== 'AUTO') {
-    cand = getCandidateByIdOrUsername(State.selectedWithPicCandidateId);
+  // A. Priority 1: Logged-in user is a Candidate -> ALWAYS bind to their own profile first!
+  if (State.currentUser && (State.currentUser.role === 'CANDIDATE' || State.currentUser.candidate)) {
+    cand = State.currentUser.candidate || State.currentUser;
   }
 
-  // B. Priority 2: Logged-in user is a Candidate or has a candidate profile
-  if (!cand && State.currentUser && (State.currentUser.role === 'CANDIDATE' || State.currentUser.candidate)) {
-    cand = State.currentUser.candidate || State.currentUser;
+  // B. Priority 2: Super Admin / Operator explicitly selected candidate via dropdown
+  if (!cand && State.selectedWithPicCandidateId && State.selectedWithPicCandidateId !== 'AUTO') {
+    cand = getCandidateByIdOrUsername(State.selectedWithPicCandidateId);
   }
 
   // C. Priority 3: Automatic resolution matching voter's Gram Panchayat & Ward from Google Sheet
