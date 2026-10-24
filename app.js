@@ -7584,15 +7584,44 @@ async function loadAdminUsersList(force = false) {
     // API server not reachable, fallback to static JSON
   }
 
-  // 2. Try Google Apps Script on GitHub Pages for immediate zero-cache live updates (Users + Candidates)
-  const isGitHub = window.location.hostname.includes('github.io');
+  // 2. Try Google Apps Script on GitHub Pages / Client for immediate zero-cache live updates (Users + Candidates + Settings)
+  const isRemoteClient = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1');
   const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec';
-  if (isGitHub && gScriptUrl) {
+  if ((isRemoteClient || force) && gScriptUrl) {
     try {
-      const [gRes, cRes] = await Promise.all([
+      const [gRes, cRes, sRes] = await Promise.all([
         fetch(`${gScriptUrl}?action=getUsers&_t=${bust}`).catch(() => null),
-        fetch(`${gScriptUrl}?action=getCandidates&_t=${bust}`).catch(() => null)
+        fetch(`${gScriptUrl}?action=getCandidates&_t=${bust}`).catch(() => null),
+        fetch(`${gScriptUrl}?action=getSettings&_t=${bust}`).catch(() => null)
       ]);
+
+      if (sRes && sRes.ok) {
+        try {
+          const sData = await sRes.json();
+          if (sData && sData.settings) {
+            const set = sData.settings;
+            if (set.ELECTION_DATE) {
+              triPortalSettings.election_date = set.ELECTION_DATE;
+              if (!triPortalSettings.voter_portal) triPortalSettings.voter_portal = {};
+              triPortalSettings.voter_portal.election_date = set.ELECTION_DATE;
+            }
+            if (set.ELECTION_TIME) {
+              triPortalSettings.election_time = set.ELECTION_TIME;
+              if (!triPortalSettings.voter_portal) triPortalSettings.voter_portal = {};
+              triPortalSettings.voter_portal.election_time = set.ELECTION_TIME;
+            }
+            if (set.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS !== undefined) {
+              State.allowVoterPhotoOnNormalSlips = (set.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS === true || String(set.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS).toUpperCase() === 'TRUE');
+              localStorage.setItem('portal_allow_voter_photo_normal', State.allowVoterPhotoOnNormalSlips ? 'true' : 'false');
+            }
+            if (set.ENABLE_WITH_PIC_SLIPS !== undefined) {
+              State.enableWithPicSlips = (set.ENABLE_WITH_PIC_SLIPS === true || String(set.ENABLE_WITH_PIC_SLIPS).toUpperCase() === 'TRUE');
+            }
+            localStorage.setItem('portal_tri_settings', JSON.stringify(triPortalSettings));
+            applyGlobalElectionDateToUI();
+          }
+        } catch(se) {}
+      }
 
       let combinedUsers = [];
       let candidatesMap = {};
@@ -10106,18 +10135,44 @@ async function loadTriPortalSettings() {
 
   if (!loaded) {
     try {
-      let res = await fetch(`portal_settings.json?_t=${bust}`, { cache: 'no-store' });
-      if (!res.ok) {
-        res = await fetch(`https://jit9763.github.io/pan/portal_settings.json?_t=${bust}`, { cache: 'no-store' });
-      }
-      if (res.ok) {
-        const data = await res.json();
-        if (data && (data.voter_portal || data.election_date)) {
-          triPortalSettings = { ...triPortalSettings, ...data };
+      // 1. Prioritize live Google Sheet settings
+      const gUrl = 'https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec?action=getSettings&_t=' + bust;
+      const gRes = await fetch(gUrl).catch(() => null);
+      if (gRes && gRes.ok) {
+        const gData = await gRes.json();
+        if (gData && gData.settings) {
+          const set = gData.settings;
+          if (set.ELECTION_DATE) {
+            triPortalSettings.election_date = set.ELECTION_DATE;
+            if (!triPortalSettings.voter_portal) triPortalSettings.voter_portal = {};
+            triPortalSettings.voter_portal.election_date = set.ELECTION_DATE;
+          }
+          if (set.ELECTION_TIME) {
+            triPortalSettings.election_time = set.ELECTION_TIME;
+            if (!triPortalSettings.voter_portal) triPortalSettings.voter_portal = {};
+            triPortalSettings.voter_portal.election_time = set.ELECTION_TIME;
+          }
+          if (set.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS !== undefined) {
+            State.allowVoterPhotoOnNormalSlips = (set.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS === true || String(set.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS).toUpperCase() === 'TRUE');
+            localStorage.setItem('portal_allow_voter_photo_normal', State.allowVoterPhotoOnNormalSlips ? 'true' : 'false');
+          }
           loaded = true;
         }
       }
     } catch(e) {}
+
+    if (!loaded) {
+      try {
+        let res = await fetch(`portal_settings.json?_t=${bust}`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && (data.voter_portal || data.election_date)) {
+            triPortalSettings = { ...triPortalSettings, ...data };
+            loaded = true;
+          }
+        }
+      } catch(e) {}
+    }
   }
 
   if (loaded) {

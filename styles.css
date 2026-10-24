@@ -3465,9 +3465,26 @@ html, body {
 .a4-grid-21 .mini-details-table {
   font-size: 5.0pt !important;
 }
-.a4-grid-21 .mini-booth-box {
-  font-size: 4.6pt !important;
-  padding: 1px 2px !important;
+.a4-grid-21 .mini-booth-box,
+.printing-bulk.layout-21 .mini-booth-box {
+  font-size: 6.8pt !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  padding: 2px 3px !important;
+  color: #000000 !important;
+  border: 1.2px solid #000000 !important;
+}
+
+.card-layout-21 .polling-box-stn-head {
+  font-size: 6.5pt !important;
+  font-weight: 800 !important;
+}
+
+.card-layout-21 .polling-box-stn-name {
+  font-size: 7.2pt !important;
+  font-weight: 900 !important;
+  color: #000000 !important;
+  line-height: 1.25 !important;
 }
 
 /* Expand 15-slip layout to use full page without empty bottom */

@@ -543,7 +543,8 @@
     function handleFormSubmit(e) {
       e.preventDefault();
       var btn = document.getElementById("saveSubmitBtn");
-      btn.disabled = true; btn.textContent = "⏳ गूगल शीट में सुरक्षित हो रहा है...";
+      btn.disabled = true;
+      btn.textContent = "⏳ गूगल शीट में सुरक्षित हो रहा है...";
 
       var candData = {
         username: document.getElementById("formUsername").value.trim(),
@@ -565,46 +566,75 @@
         allow_voter_photo: document.getElementById("formAllowVoterPhoto").checked
       };
 
+      var saveDone = false;
+      var saveTimer = setTimeout(function() {
+        if (!saveDone) {
+          console.warn("Save taking longer than expected, running fallback POST...");
+          executeSaveViaFetch();
+        }
+      }, 6000);
+
       function onSaveSuccess(res) {
-        btn.disabled = false; btn.textContent = "💾 गूगल शीट में सुरक्षित करें (Save to Google Sheet)";
+        if (saveDone) return;
+        saveDone = true;
+        clearTimeout(saveTimer);
+        btn.disabled = false;
+        btn.textContent = "💾 गूगल शीट में सुरक्षित करें (Save to Google Sheet)";
         if (res && res.success) {
           showToast("✅ " + res.message, "success");
-          if (res.candidates) candidates = res.candidates;
-          else refreshCandidatesList();
+          // Update local candidate array directly so UI updates without waiting!
+          var idx = candidates.findIndex(function(x) { return x.username === candData.username; });
+          if (idx !== -1) {
+            candidates[idx] = Object.assign({}, candidates[idx], candData);
+          } else {
+            candidates.push(Object.assign({}, candData));
+          }
+          renderCandidatesList();
           selectCandidate(candData.username);
         } else {
-          showToast("⚠️ त्रुटि: " + (res.error || "सुरक्षित नहीं हो सका"), "error");
+          showToast("⚠️ त्रुटि: " + ((res && res.error) || "सुरक्षित नहीं हो सका"), "error");
         }
       }
 
       function onSaveError(err) {
-        btn.disabled = false; btn.textContent = "💾 गूगल शीट में सुरक्षित करें (Save to Google Sheet)";
-        showToast("⚠️ नेटवर्क विफलता: " + err, "error");
+        if (saveDone) return;
+        console.warn("Primary save error:", err);
+        executeSaveViaFetch();
       }
 
       function executeSaveViaFetch() {
         var sUrl = "https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec";
+        var controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+        var fetchTimeout = setTimeout(function() { if (controller) controller.abort(); }, 12000);
+
         fetch(sUrl, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "saveCandidate", candidateData: candData })
+          body: JSON.stringify({ action: "saveCandidate", candidateData: candData }),
+          signal: controller ? controller.signal : undefined
         })
-        .then(function(r) { return r.json(); })
+        .then(function(r) { clearTimeout(fetchTimeout); return r.json(); })
         .then(onSaveSuccess)
         .catch(function(err) {
-          btn.disabled = false; btn.textContent = "💾 गूगल शीट में सुरक्षित करें (Save to Google Sheet)";
+          clearTimeout(fetchTimeout);
+          if (saveDone) return;
+          saveDone = true;
+          clearTimeout(saveTimer);
+          btn.disabled = false;
+          btn.textContent = "💾 गूगल शीट में सुरक्षित करें (Save to Google Sheet)";
           showToast("⚠️ नेटवर्क विफलता: " + err, "error");
         });
       }
 
-      if (typeof google !== "undefined" && google.script && google.script.run) {
-        google.script.run
-          .withSuccessHandler(onSaveSuccess)
-          .withFailureHandler(function(err) {
-            console.warn("google.script.run failed, trying POST fetch fallback:", err);
-            executeSaveViaFetch();
-          })
-          .apiSaveCandidate(candData);
+      if (typeof google !== "undefined" && google.script && google.script.run && typeof google.script.run.apiSaveCandidate === "function") {
+        try {
+          google.script.run
+            .withSuccessHandler(onSaveSuccess)
+            .withFailureHandler(onSaveError)
+            .apiSaveCandidate(candData);
+        } catch(ex) {
+          executeSaveViaFetch();
+        }
       } else {
         executeSaveViaFetch();
       }
