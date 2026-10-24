@@ -346,13 +346,13 @@ function setupUnifiedUsersSheet() {
       "kamala", "bhinai2026", "कमला देवी", "9876543210", "पंचायत समिति सदस्य",
       "2", "बांदनवाड़ा", "बांदनवाड़ा: ALL",
       "हाथ", "", "./assets/kamala_photo.jpg", "क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।", "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
-      false, false, "CANDIDATE", true, true, true, true, true, true, true, true, nowStr
+      false, "CANDIDATE", true, true, true, true, true, true, true, true, nowStr
     ],
     [
       "kamla", "bhinai2026", "कमला देवी", "9876543210", "पंचायत समिति सदस्य",
       "2", "बांदनवाड़ा", "बांदनवाड़ा: ALL",
       "हाथ", "", "./assets/kamala_photo.jpg", "क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।", "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
-      "CANDIDATE", true, true, true, true, true, true, true, true, nowStr
+      false, "CANDIDATE", true, true, true, true, true, true, true, true, nowStr
     ],
 
     // 3. जिला परिषद सदस्य: राजेन्द्र चौधरी (ZP वार्ड 15 छपेगा, 3 पंचायतों के आंशिक वार्ड खुलेंगे)
@@ -360,7 +360,7 @@ function setupUnifiedUsersSheet() {
       "zp_rajendra", "zp2026", "राजेन्द्र चौधरी", "9829000015", "जिला परिषद सदस्य",
       "15", "बांदनवाड़ा, देवलियाकलां, कनईकला", "बांदनवाड़ा: 1,2,3 | देवलियाकलां: 1,2,3,4 | कनईकला: 11,12,13",
       "कमल", "", "", "जिला परिषद क्षेत्र के चहुंमुखी विकास हेतु आपका अपना कर्मठ एवं विश्वस्त साथी।", "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
-      "CANDIDATE", true, true, true, true, true, true, true, true, nowStr
+      false, "CANDIDATE", true, true, true, true, true, true, true, true, nowStr
     ],
 
     // 4. सरपंच प्रत्याशी: रामेश्वर जाट (कनईकलां - पूरी ग्राम पंचायत, सारे वार्ड खुलेंगे, पर्ची पर वार्ड नहीं छपेगा)
@@ -368,7 +368,7 @@ function setupUnifiedUsersSheet() {
       "sarpanch_kanai", "kanai2026", "रामेश्वर जाट", "9829000001", "सरपंच",
       "ALL", "कनईकला", "ALL",
       "उगता सूरज", "", "", "ग्राम पंचायत के सर्वांगीण विकास हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।", "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
-      "CANDIDATE", true, true, true, true, true, true, true, true, nowStr
+      false, "CANDIDATE", true, true, true, true, true, true, true, true, nowStr
     ],
 
     // 5. वार्ड पंच प्रत्याशी: सुभाष गुर्जर (कनईकलां - केवल वार्ड 4 खुलेगा व लॉक रहेगा)
@@ -376,15 +376,16 @@ function setupUnifiedUsersSheet() {
       "panch_w4", "panch2026", "सुभाष गुर्जर", "9829000004", "वार्ड पंच",
       "4", "कनईकला", "4",
       "पतंग", "", "", "वार्ड के विकास एवं स्वच्छता हेतु भारी मतों से विजयी बनावें।", "15 अक्टूबर 2026", "प्रातः 7:00 बजे से सायं 5:00 बजे तक",
-      "CANDIDATE", true, true, true, true, true, true, true, true, nowStr
+      false, "CANDIDATE", true, true, true, true, true, true, true, true, nowStr
     ]
   ];
 
-  sheet.getRange(2, 1, defaultUnifiedRows.length, headers.length).setValues(defaultUnifiedRows);
+    sheet.getRange(2, 1, defaultUnifiedRows.length, headers.length).setValues(defaultUnifiedRows);
 
   // Checkbox Validations: Status (16), Can_Search(17) to Can_Download(23)
   var checkRule = SpreadsheetApp.newDataValidation().requireCheckbox().build();
-  for (var c = 16; c <= 23; c++) {
+  sheet.getRange(2, 15, 100, 1).setDataValidation(checkRule); // Allow_Voter_Photo
+  for (var c = 17; c <= 24; c++) {
     sheet.getRange(2, c, 100, 1).setDataValidation(checkRule);
   }
 
