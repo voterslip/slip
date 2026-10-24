@@ -34,7 +34,7 @@
   },
   "google_sheet_sync": {
     "enabled": true,
-    "apps_script_url": "https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec",
+    "apps_script_url": "https://script.google.com/macros/s/AKfycbyweGsi0hYfFaSMWT-M2UOPyGBU2XD0b4ClxcK9P5DDPvql3q8jJR7DjdW352dxFa3i6A/exec",
     "sheet_name": "Users",
     "sync_interval_ms": 3600000,
     "sync_interval_desc": "1 Hour (60 minutes)",
