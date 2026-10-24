@@ -302,6 +302,8 @@
       });
     }
 
+    function onThumbError(el) { if (el) { el.onerror = null; el.src = "https://api.dicebear.com/7.x/identicon/svg?seed=cand"; } }
+
     function renderCandidatesList(filterText) {
       var container = document.getElementById("candidatesListContainer");
       container.innerHTML = "";
@@ -321,7 +323,7 @@
         var photoSrc = c.photo_url || (c.username === "kamla" || c.username === "kamala" ? "./assets/kamala_photo.jpg" : "https://api.dicebear.com/7.x/identicon/svg?seed=" + encodeURIComponent(c.username));
 
         item.innerHTML = 
-          '<img class="cand-thumb" src="' + photoSrc + '" alt="' + c.candidate_name + '" onerror="this.src=\\'https://api.dicebear.com/7.x/identicon/svg?seed=cand\\'">' +
+          '<img class="cand-thumb" src="' + photoSrc + '" alt="' + (c.candidate_name || c.username) + '" onerror="onThumbError(this)">' +
           '<div class="cand-item-info">' +
           '  <div class="cand-item-name">' + (c.candidate_name || c.username) + '</div>' +
           '  <div class="cand-item-meta">' + (c.post || "") + ' • ' + (c.panchayat || "") + '</div>' +
