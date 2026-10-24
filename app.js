@@ -139,7 +139,7 @@ async function syncCandidatesFromGoogleSheetClient(showNotification = false) {
   }
 
   // B. Direct Google Apps Script fetch (For GitHub Pages & Client Mode)
-  const scriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwOlvbmZzo8kJAFgi1TdgCA09WusBHanGhAk6K5GB63c5M1y6UIeTQQAAvW7NS27nlM8g/exec';
+  const scriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec';
   if (scriptUrl) {
     try {
       const fetchUrl = `${scriptUrl}${scriptUrl.includes('?') ? '&' : '?'}action=getCandidates&_t=${bust}`;
@@ -463,8 +463,36 @@ async function saveVoterPortalElectionDate() {
     }
   } catch (err) {}
 
+  // Live Sync to Google Sheet Settings and Candidate profiles
+  if (typeof postToAppsScript === 'function') {
+    postToAppsScript({
+      action: 'saveSettings',
+      key: 'ELECTION_DATE',
+      value: newDate,
+      settings: {
+        ELECTION_DATE: newDate,
+        ELECTION_TIME: newTime
+      }
+    }).then(res => {
+      if (res && res.success && typeof showToast === 'function') {
+        showToast('☁️ गूगल शीट में मतदान दिनांक (' + newDate + ') लाइव अपडेट!', 'success');
+      }
+    }).catch(err => {
+      console.warn('Google Sheet election date sync warning:', err);
+    });
+
+    if (State.currentUser && State.currentUser.username) {
+      postToAppsScript({
+        action: 'saveCandidate',
+        username: State.currentUser.username,
+        election_date: newDate,
+        election_time: newTime
+      }).catch(() => {});
+    }
+  }
+
   if (typeof showToast === 'function') {
-    showToast('✅ मतदान दिनांक (' + newDate + ') स्थानीय रूप से सुरक्षित!');
+    showToast('✅ मतदान दिनांक (' + newDate + ') सुरक्षित!');
   }
 }
 
@@ -2675,7 +2703,7 @@ function initMasterData() {
     State.panchayats = window.MASTER_DATA.panchayats || [];
     State.adminUsers = window.MASTER_DATA.admin_users || [];
     State.deletedVoters = window.MASTER_DATA.deleted_voters || [];
-    State.config.appsScriptUrl = localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwOlvbmZzo8kJAFgi1TdgCA09WusBHanGhAk6K5GB63c5M1y6UIeTQQAAvW7NS27nlM8g/exec';
+    State.config.appsScriptUrl = localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec';
     const appsScriptInput = document.getElementById('appsScriptUrlInput');
     if (appsScriptInput && State.config.appsScriptUrl) {
       appsScriptInput.value = State.config.appsScriptUrl;
@@ -5550,7 +5578,7 @@ function loadDefaultMasterData() {
     State.voters = window.MASTER_DATA.initial_voters || [];
     State.adminUsers = window.MASTER_DATA.admin_users || [];
     State.deletedVoters = window.MASTER_DATA.deleted_voters || [];
-    State.config.appsScriptUrl = localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwOlvbmZzo8kJAFgi1TdgCA09WusBHanGhAk6K5GB63c5M1y6UIeTQQAAvW7NS27nlM8g/exec';
+    State.config.appsScriptUrl = localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec';
     const appsScriptInput = document.getElementById('appsScriptUrlInput');
     if (appsScriptInput && State.config.appsScriptUrl) {
       appsScriptInput.value = State.config.appsScriptUrl;
@@ -7552,7 +7580,7 @@ async function loadAdminUsersList(force = false) {
 
   // 2. Try Google Apps Script on GitHub Pages for immediate zero-cache live updates (Users + Candidates)
   const isGitHub = window.location.hostname.includes('github.io');
-  const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwOlvbmZzo8kJAFgi1TdgCA09WusBHanGhAk6K5GB63c5M1y6UIeTQQAAvW7NS27nlM8g/exec';
+  const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec';
   if (isGitHub && gScriptUrl) {
     try {
       const [gRes, cRes] = await Promise.all([
@@ -8708,7 +8736,7 @@ async function handleAdminSaveCandidate(event) {
 
   // Push candidate to Google Sheet in background
   try {
-    const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwOlvbmZzo8kJAFgi1TdgCA09WusBHanGhAk6K5GB63c5M1y6UIeTQQAAvW7NS27nlM8g/exec';
+    const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec';
     if (gScriptUrl) {
       fetch(gScriptUrl, {
         method: 'POST',
@@ -9787,7 +9815,7 @@ async function handleGatekeeperLogin(event) {
 
   // E2. Online Google Sheet Direct Candidate Verification (For newly added candidates or real-time password updates)
   const isVoterContext = (typeof getPortalContext === 'function' && getPortalContext() === 'voter') || window.location.pathname.includes('voter-portal');
-  const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwOlvbmZzo8kJAFgi1TdgCA09WusBHanGhAk6K5GB63c5M1y6UIeTQQAAvW7NS27nlM8g/exec';
+  const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec';
 
   if (gScriptUrl) {
     try {
@@ -10430,7 +10458,7 @@ async function checkLivePermissionsUpdate() {
     let freshUser = null;
 
     const isLocalNode = window.location.hostname === 'localhost' || window.location.port === '3000' || (window.location.protocol.startsWith('http') && !window.location.hostname.includes('github.io'));
-    const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwOlvbmZzo8kJAFgi1TdgCA09WusBHanGhAk6K5GB63c5M1y6UIeTQQAAvW7NS27nlM8g/exec';
+    const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec';
 
     if (isLocalNode) {
       // 1. Local Node.js server: ultra-fast in-memory / SQLite API
@@ -11246,7 +11274,7 @@ function openCandidateSettingsWebApp() {
   }
   const url = getAppsScriptUrl();
   const sep = url.includes('?') ? '&' : '?';
-  window.open(url + sep + 'action=html', '_blank');
+  window.open(url, '_blank');
 }
 
 function toggleCandidateSettingsIframe() {
@@ -11261,7 +11289,7 @@ function toggleCandidateSettingsIframe() {
     const url = getAppsScriptUrl();
     const sep = url.includes('?') ? '&' : '?';
     if (!iframe.src || iframe.src === 'about:blank' || iframe.src.indexOf('action=html') === -1) {
-      iframe.src = url + sep + 'action=html';
+      iframe.src = url;
     }
     container.style.display = 'block';
     container.scrollIntoView({ behavior: 'smooth' });

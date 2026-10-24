@@ -465,6 +465,26 @@ function showAppInfo() {
 /**
  * doGet: वेब ऐप HTML पेज सर्व करता है अथवा JSON API रिस्पॉन्स देता है
  */
+/**
+ * प्रत्याशी सेटिंग्स एवं नियंत्रण कक्ष वेब ऐप HTML आउटपुट जनरेटर
+ */
+function getCandidateSettingsHtmlOutput() {
+  var htmlContent = "";
+  try {
+    htmlContent = HtmlService.createTemplateFromFile("CandidateSettings").evaluate().getContent();
+  } catch(e1) {
+    try {
+      htmlContent = HtmlService.createTemplateFromFile("Index").evaluate().getContent();
+    } catch(e2) {
+      htmlContent = buildCandidateSettingsWebHtml();
+    }
+  }
+  return HtmlService.createHtmlOutput(htmlContent)
+    .setTitle("🗳️ राजस्थान पंचायत आम चुनाव 2026 - सुपर एडमिन प्रत्याशी सेटिंग्स एवं नियंत्रण कक्ष")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
 function doGet(e) {
   var params = (e && e.parameter) ? e.parameter : {};
   var action = (params.action || "").trim();
@@ -474,21 +494,8 @@ function doGet(e) {
   var jsonActions = ["ping", "init", "setup", "setupAllSheets", "getSettings", "saveSettings", "updateSetting", "getUsers", "getCandidates", "getPortalJson", "getFullJson", "syncJson", "login", "saveCandidate", "deleteCandidate", "updatePassword", "changePassword"];
 
   // 1. यदि कोई JSON एक्शन नहीं है अथवा वेब पेज मांगा गया है, तो सीधे सम्पूर्ण प्रत्याशी प्रबंधन वेब ऐप HTML आउटपुट दें!
-  if (!action || !jsonActions.includes(action) || action === "candidateSettings" || action === "candidate_settings" || action === "html" || action === "admin") {
-    var htmlContent = "";
-    try {
-      htmlContent = HtmlService.createTemplateFromFile("CandidateSettings").evaluate().getContent();
-    } catch(e1) {
-      try {
-        htmlContent = HtmlService.createTemplateFromFile("Index").evaluate().getContent();
-      } catch(e2) {
-        htmlContent = buildCandidateSettingsWebHtml();
-      }
-    }
-    return HtmlService.createHtmlOutput(htmlContent)
-      .setTitle("🗳️ राजस्थान पंचायत आम चुनाव 2026 - सुपर एडमिन प्रत्याशी सेटिंग्स एवं नियंत्रण कक्ष")
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  if (!action || !jsonActions.includes(action) || action === "candidateSettings" || action === "candidate_settings" || action === "html" || action === "admin" || action === "web") {
+    return getCandidateSettingsHtmlOutput();
   }
 
   // 2. API कॉल्स का प्रबंधन
@@ -566,8 +573,16 @@ function doGet(e) {
         res = handleUpdatePassword(params.username || params.user_id, params.newPassword || params.password);
         break;
 
+      case "html":
+      case "candidateSettings":
+      case "candidate_settings":
+      case "admin":
+      case "web":
+        return getCandidateSettingsHtmlOutput();
+
       default:
-        res = { success: false, error: "अमान्य action: " + action };
+        // यदि कोई अपरिचित एक्शन या वेब पेज खोला गया हो तो एरर देने के बजाय सीधे HTML वेब ऐप लोड करें
+        return getCandidateSettingsHtmlOutput();
     }
   } catch (err) {
     res = { success: false, error: err.toString() };
@@ -1006,19 +1021,26 @@ function handleSaveCandidate(cand) {
     uName = prefix + "_" + Math.floor(1000 + Math.random() * 9000);
   }
 
+  var targetRows = [];
+  var isKamla = (uName.toLowerCase() === "kamla" || uName.toLowerCase() === "kamala");
+
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][uCol]).toLowerCase() === uName.toLowerCase()) {
-      targetRow = i + 1;
+    var rowU = String(data[i][uCol]).toLowerCase();
+    if (isKamla && (rowU === "kamla" || rowU === "kamala")) {
+      targetRows.push(i + 1);
+    } else if (rowU === uName.toLowerCase()) {
+      targetRows.push(i + 1);
       break;
     }
   }
 
-  if (targetRow === -1) {
-    targetRow = sheet.getLastRow() + 1;
-    sheet.getRange(targetRow, uCol + 1).setValue(uName);
+  if (targetRows.length === 0) {
+    var newRow = sheet.getLastRow() + 1;
+    sheet.getRange(newRow, uCol + 1).setValue(uName);
     var nowStr = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd HH:mm:ss");
     var cAtCol = headers.indexOf("Created_At");
-    if (cAtCol !== -1) sheet.getRange(targetRow, cAtCol + 1).setValue(nowStr);
+    if (cAtCol !== -1) sheet.getRange(newRow, cAtCol + 1).setValue(nowStr);
+    targetRows.push(newRow);
   }
 
   var fieldMap = {
@@ -1052,12 +1074,14 @@ function handleSaveCandidate(cand) {
     fieldMap["Password"] = "bhinai2026";
   }
 
-  for (var key in fieldMap) {
-    var cIdx = headers.indexOf(key);
-    if (cIdx !== -1 && fieldMap[key] !== undefined) {
-      sheet.getRange(targetRow, cIdx + 1).setValue(fieldMap[key]);
+  targetRows.forEach(function(tRow) {
+    for (var key in fieldMap) {
+      var cIdx = headers.indexOf(key);
+      if (cIdx !== -1 && fieldMap[key] !== undefined) {
+        sheet.getRange(tRow, cIdx + 1).setValue(fieldMap[key]);
+      }
     }
-  }
+  });
 
   // Settings शीट में अंतिम सिंक समय अपडेट करें
   try {
@@ -1065,9 +1089,15 @@ function handleSaveCandidate(cand) {
     if (setSheet) {
       var sData = setSheet.getDataRange().getValues();
       for (var s = 1; s < sData.length; s++) {
-        if (String(sData[s][0]).trim() === "LAST_CANDIDATE_SYNC") {
+        var sKey = String(sData[s][0]).trim();
+        if (sKey === "LAST_CANDIDATE_SYNC") {
           setSheet.getRange(s + 1, 2).setValue(new Date().toISOString());
-          break;
+        }
+        if (cand.election_date && sKey === "ELECTION_DATE") {
+          setSheet.getRange(s + 1, 2).setValue(cand.election_date);
+        }
+        if (cand.election_time && sKey === "ELECTION_TIME") {
+          setSheet.getRange(s + 1, 2).setValue(cand.election_time);
         }
       }
     }
