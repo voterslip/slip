@@ -11210,6 +11210,10 @@ async function postToAppsScript(payload) {
       username: payload.username || payload.user_id || '',
       password: payload.newPassword || payload.password || '',
       newPassword: payload.newPassword || payload.password || '',
+      key: payload.key || '',
+      value: (payload.value !== undefined) ? String(payload.value) : '',
+      election_date: payload.election_date || '',
+      election_time: payload.election_time || '',
       data: JSON.stringify(payload),
       _t: Date.now()
     });
@@ -11602,18 +11606,22 @@ function toggleNormalSlipVoterPhoto(enabled) {
 
   showToast(enabled ? '⏳ गूगल शीट में सेटिंग अपडेट हो रही है (मतदाता फोटो ON)...' : '⏳ गूगल शीट में सेटिंग अपडेट हो रही है (मतदाता फोटो OFF)...');
 
-  // Live Sync to Google Sheet Settings via Apps Script API
-  const url = getAppsScriptUrl();
-  const sep = url.includes('?') ? '&' : '?';
-  const saveUrl = `${url}${sep}action=saveSettings&key=ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS&value=${enabled}&_t=${Date.now()}`;
-
-  fetch(saveUrl, { mode: 'no-cors' })
-    .then(() => {
-      showToast(enabled ? '✅ गूगल शीट में सुरक्षित: सामान्य पर्चियों में मतदाता फोटो सक्रिय!' : '✅ गूगल शीट में सुरक्षित: सामान्य पर्चियां मूल B&W मोड में सेट!');
-    })
-    .catch(err => {
+  if (typeof postToAppsScript === 'function') {
+    postToAppsScript({
+      action: 'saveSettings',
+      key: 'ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS',
+      value: enabled,
+      settings: {
+        ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS: enabled
+      }
+    }).then(res => {
+      if (res && res.success) {
+        showToast(enabled ? '✅ गूगल शीट में सुरक्षित: सामान्य पर्चियों में मतदाता फोटो सक्रिय!' : '✅ गूगल शीट में सुरक्षित: सामान्य पर्चियां मूल B&W मोड में सेट!');
+      }
+    }).catch(err => {
       console.warn('Sheet settings sync warning:', err);
     });
+  }
 
   if (typeof updateBulkGenerator === 'function') updateBulkGenerator();
   if (State.currentSlipVoter && typeof renderModalCandidateSlip === 'function') {

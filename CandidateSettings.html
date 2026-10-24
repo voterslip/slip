@@ -322,7 +322,7 @@
       });
 
       var symSelect = document.getElementById("formSymbolSelect");
-      symSelect.innerHTML = "";
+      symSelect.innerHTML = "<option value=\"\">-- कोई चुनाव चिन्ह नहीं (केवल यूजर/प्रशासक) --</option>";
       officialSymbols.forEach(function(sym) {
         var opt = document.createElement("option");
         opt.value = sym; opt.textContent = sym;
@@ -389,7 +389,7 @@
       document.getElementById("formPost").value = c.post || "सरपंच";
       document.getElementById("formGp").value = c.panchayat || officialGps[0];
       document.getElementById("formPrintWard").value = c.print_ward_no || c.ward || "";
-      document.getElementById("formSymbolSelect").value = c.symbol_name || "हाथ";
+      document.getElementById("formSymbolSelect").value = c.symbol_name || "";
       document.getElementById("formAllowedGps").value = c.allowed_panchayats || c.panchayat || "ALL";
       document.getElementById("formAllowedWards").value = c.allowed_panchayat_wards || c.allowed_wards || "ALL";
       document.getElementById("formSlogan").value = c.slogan || "";
@@ -429,7 +429,7 @@
       document.getElementById("formPost").value = "सरपंच";
       document.getElementById("formGp").value = officialGps[0];
       document.getElementById("formPrintWard").value = "";
-      document.getElementById("formSymbolSelect").value = "उगता सूरज";
+      document.getElementById("formSymbolSelect").value = "";
       document.getElementById("formAllowedGps").value = officialGps[0];
       document.getElementById("formAllowedWards").value = "ALL";
       document.getElementById("formSlogan").value = "क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।";
@@ -524,7 +524,12 @@
       }
       document.getElementById("specGpRow").textContent = gpRowText;
       document.getElementById("specDate").textContent = date;
-      document.getElementById("specSymbolName").textContent = sym;
+      if (!sym) {
+        document.getElementById("specSymbolName").textContent = "कोई चिन्ह नहीं";
+        document.getElementById("specSymbolBox").textContent = "⚪";
+      } else {
+        document.getElementById("specSymbolName").textContent = sym;
+      }
 
       // Symbol Icon
       var symIconMap = { "हाथ": "✋", "कमल": "🪷", "उगता सूरज": "☀️", "पतंग": "🪁", "बोतल": "🍾", "साइकिल": "🚲", "गिलास": "🥛", "कार": "🚗", "ताला-चाबी": "🔐", "बल्ला": "🏏", "पंखा": "🌀", "सिलेंडर": "🛢️", "मोमबत्ती": "🕯️" };
@@ -583,9 +588,10 @@
           .withFailureHandler(onSaveError)
           .apiSaveCandidate(candData);
       } else {
-        fetch(window.location.href, {
+        var sUrl = (window.location.href.indexOf("script.google.com") !== -1) ? window.location.href.split("?")[0] : "https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec";
+        fetch(sUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({ action: "saveCandidate", candidateData: candData })
         })
         .then(function(r) { return r.json(); })
@@ -692,7 +698,8 @@
         var obj = {}; obj[key] = val;
         google.script.run.withSuccessHandler(onSettSuccess).withFailureHandler(onSettError).apiSaveSettings(obj);
       } else {
-        var url = window.location.href.split("?")[0] + "?action=saveSettings&key=" + encodeURIComponent(key) + "&value=" + encodeURIComponent(val);
+        var base = (window.location.href.indexOf("script.google.com") !== -1) ? window.location.href.split("?")[0] : "https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec";
+        var url = base + "?action=saveSettings&key=" + encodeURIComponent(key) + "&value=" + encodeURIComponent(val) + "&_t=" + Date.now();
         fetch(url).then(function(r){ return r.json(); }).then(onSettSuccess).catch(onSettError);
       }
     }
