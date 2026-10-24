@@ -1,6 +1,6 @@
 
 function openDirectGoogleSheet() {
-  const url = State.spreadsheetUrl || 'https://docs.google.com/spreadsheets/d/1V9a5UcmMUNzc8H4mldNXmoP3ffe1ciNdzEsyHB6vhrBE3sZC71VWeauv/edit';
+  const url = State.spreadsheetUrl || 'https://docs.google.com/spreadsheets/d/1pWouRxbkasaKcexqKdZJGqScqOigv9Hm-L-0skVq6Dc/edit';
   window.open(url, '_blank');
 }
 window.openDirectGoogleSheet = openDirectGoogleSheet;

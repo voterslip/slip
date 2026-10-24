@@ -38,6 +38,7 @@
     "sheet_name": "Users",
     "sync_interval_ms": 3600000,
     "sync_interval_desc": "1 Hour (60 minutes)",
-    "last_sync": null
+    "last_sync": null,
+    "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1pWouRxbkasaKcexqKdZJGqScqOigv9Hm-L-0skVq6Dc/edit"
   }
 }
