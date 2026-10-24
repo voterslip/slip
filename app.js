@@ -1,3 +1,28 @@
+
+function openDirectGoogleSheet() {
+  const url = State.spreadsheetUrl || 'https://docs.google.com/spreadsheets/d/1V9a5UcmMUNzc8H4mldNXmoP3ffe1ciNdzEsyHB6vhrBE3sZC71VWeauv/edit';
+  window.open(url, '_blank');
+}
+window.openDirectGoogleSheet = openDirectGoogleSheet;
+
+function onMiniSlipPhotoError(img, folder, wNum, serialNo) {
+  if (!img.dataset.fbStep) {
+    img.dataset.fbStep = "1";
+    img.src = 'https://raw.githubusercontent.com/voterslip/slip/main/voter_slips/' + folder + '/W' + wNum + '/' + serialNo + '.webp';
+  } else if (img.dataset.fbStep === "1") {
+    img.dataset.fbStep = "2";
+    img.src = 'https://raw.githubusercontent.com/Jit9763/voterslip-images/main/voter_slips/' + folder + '/W' + wNum + '/' + serialNo + '.webp';
+  } else {
+    img.onerror = null;
+    img.src = 'https://api.dicebear.com/7.x/identicon/svg?seed=voter_' + (serialNo || '0');
+    img.style.position = 'static';
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'cover';
+  }
+}
+window.onMiniSlipPhotoError = onMiniSlipPhotoError;
+
 // ==========================================================================
 // HINDI FUZZY MATCH NORMALIZER (IMMUNE TO TYPOS, SPACING & MATRA VARIATIONS)
 // e.g. "देवलिया कलां" == "देवलियाकलां", "कनईकलां" == "कनईकला", "चांपानेरी" == "चापानेरी"

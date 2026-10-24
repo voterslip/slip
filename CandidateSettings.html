@@ -52,12 +52,12 @@
     .form-input, .form-select, .form-textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-weight: 600; outline: none; background: #fff; }
     .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
     .photo-upload-section { background: #f1f5f9; border: 2px dashed #94a3b8; border-radius: 10px; padding: 14px; text-align: center; display: flex; gap: 16px; align-items: center; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
-    .photo-preview-box { width: 100px; height: 120px; border-radius: 8px; border: 2px solid #3b82f6; overflow: hidden; background: #fff; position: relative; box-shadow: 0 2px 6px rgba(0,0,0,0.1); flex-shrink: 0; }
-    .photo-preview-box img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .photo-preview-box { width: 120px; height: 144px; display:flex; align-items:center; justify-content:center; border-radius: 8px; border: 2px solid #3b82f6; overflow: hidden; background: #fff; position: relative; box-shadow: 0 2px 6px rgba(0,0,0,0.1); flex-shrink: 0; }
+    .photo-preview-box img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
     .photo-desc { text-align: left; max-width: 380px; }
     .specimen-card { background: #fff; border: 2px solid #1e3a8a; border-radius: 8px; overflow: hidden; max-width: 440px; margin: 16px auto; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
     .specimen-top { background: linear-gradient(to bottom, #ffffff, #fffbeb); border-bottom: 2px solid #1e3a8a; padding: 10px 12px; display: flex; gap: 10px; align-items: center; }
-    .specimen-photo { width: 62px; height: 75px; border-radius: 4px; border: 1px solid #000; object-fit: cover; background: #f8fafc; flex-shrink: 0; }
+    .specimen-photo { width: 66px; height: 80px; border-radius: 4px; border: 1.5px solid #000; object-fit: cover; object-position: center top; background: #f8fafc; flex-shrink: 0; }
     .specimen-info { flex: 1; text-align: center; }
     .specimen-title { font-size: 10px; font-weight: 700; color: #1e3a8a; }
     .specimen-name { font-size: 15px; font-weight: 900; color: #b91c1c; margin: 2px 0; }
@@ -81,6 +81,7 @@
       <div class="top-sub">सुपर एडमिन प्रत्याशी प्रबंधन, रंगीन फोटो अपलोड एवं एकल मास्टर शीट सिंक कमान कक्ष</div>
     </div>
     <div class="top-actions">
+      <button type="button" class="btn btn-outline" onclick="openDirectGoogleSheet()" style="background:#fff; font-weight:700; color:#1e3a8a;">📊 डायरेक्ट गूगल शीट खोलें ↗</button>
       <button type="button" class="btn btn-warning" onclick="createNewCandidate()">➕ नया प्रत्याशी जोड़ें</button>
       <button type="button" class="btn btn-primary" onclick="refreshCandidatesList()">🔄 रीफ्रेश सूची</button>
       <button type="button" class="btn btn-success" onclick="exportPortalJson()">📥 डाउनलोड portal_users.json</button>
@@ -291,6 +292,26 @@
       refreshCandidatesList();
     }
 
+    function populateCandidateDropdown() {
+      var sel = document.getElementById("topCandSelectDropdown");
+      if (!sel) return;
+      sel.innerHTML = "";
+      candidates.forEach(function(c) {
+        var opt = document.createElement("option");
+        opt.value = c.username;
+        var pText = c.post ? (" [" + c.post + " - " + (c.panchayat || "") + "]") : "";
+        opt.textContent = (c.candidate_name || c.username) + pText + (c.allow_voter_photo ? " 📸 [फोटो अनुमत]" : "");
+        sel.appendChild(opt);
+      });
+      if (activeCandidate) sel.value = activeCandidate.username;
+    }
+
+    var liveSpreadsheetUrl = "https://docs.google.com/spreadsheets/d/1V9a5UcmMUNzc8H4mldNXmoP3ffe1ciNdzEsyHB6vhrBE3sZC71VWeauv/edit";
+
+    function openDirectGoogleSheet() {
+      window.open(liveSpreadsheetUrl, "_blank");
+    }
+
     function populateDropdowns() {
       var gpSelect = document.getElementById("formGp");
       gpSelect.innerHTML = "";
@@ -336,7 +357,7 @@
           '  <div class="cand-item-meta">' + (c.post || "") + ' • ' + (c.panchayat || "") + '</div>' +
           '  <div>' +
           '    <span class="cand-badge ' + (c.status === "ACTIVE" ? "badge-active" : "badge-inactive") + '">' + (c.status === "ACTIVE" ? "🟢 एक्टिव" : "🔴 बंद") + '</span> ' +
-          '    <span class="cand-badge badge-symbol">🚩 ' + (c.symbol_name || "चिन्ह") + '</span>' +
+          '    <span class="cand-badge badge-symbol">🚩 ' + (c.symbol_name || "चिन्ह") + '</span>' + (c.allow_voter_photo ? ' <span class="cand-badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">📸 फोटो चालू</span>' : '') +
           '  </div>' +
           '</div>';
 
@@ -344,6 +365,7 @@
       });
 
       document.getElementById("candCountText").textContent = count;
+      populateCandidateDropdown();
     }
 
     function filterCandidates(q) {
@@ -374,6 +396,8 @@
       document.getElementById("formDate").value = c.election_date || "15 अक्टूबर 2026";
       document.getElementById("formTime").value = c.election_time || "प्रातः 7:00 बजे से सायं 5:00 बजे तक";
       document.getElementById("formStatus").checked = (c.status === "ACTIVE");
+      document.getElementById("formAllowVoterPhoto").checked = !!(c.allow_voter_photo);
+      var topSel = document.getElementById("topCandSelectDropdown"); if (topSel) topSel.value = c.username;
 
       var previewImg = document.getElementById("photoPreviewImg");
       if (c.photo_url) {
@@ -412,6 +436,7 @@
       document.getElementById("formDate").value = "15 अक्टूबर 2026";
       document.getElementById("formTime").value = "प्रातः 7:00 बजे से सायं 5:00 बजे तक";
       document.getElementById("formStatus").checked = true;
+      document.getElementById("formAllowVoterPhoto").checked = false;
 
       document.getElementById("photoPreviewImg").src = "https://api.dicebear.com/7.x/identicon/svg?seed=new";
       document.getElementById("removePhotoBtn").style.display = "none";
@@ -531,7 +556,8 @@
         slogan: document.getElementById("formSlogan").value.trim(),
         election_date: document.getElementById("formDate").value.trim(),
         election_time: document.getElementById("formTime").value.trim(),
-        status: document.getElementById("formStatus").checked ? "ACTIVE" : "INACTIVE"
+        status: document.getElementById("formStatus").checked ? "ACTIVE" : "INACTIVE",
+        allow_voter_photo: document.getElementById("formAllowVoterPhoto").checked
       };
 
       function onSaveSuccess(res) {
@@ -673,6 +699,7 @@
 
     function loadMasterSettings() {
       function applySett(res) {
+        if (res && res.spreadsheet_url) { liveSpreadsheetUrl = res.spreadsheet_url; }
         if (res && res.settings) {
           var photoEl = document.getElementById("masterVoterPhotoCheck");
           if (photoEl && res.settings.ALLOW_VOTER_PHOTO_ON_NORMAL_SLIPS !== undefined) {
