@@ -683,7 +683,7 @@
               </span>
 
               <!-- Super Admin Voter Photo Power Toggle -->
-              <label id="superAdminAllowPhotoToggle" class="remember-label" style="display:inline-flex; align-items:center; gap:5px; font-weight:700; cursor:pointer; color:#1e40af; background:#eff6ff; padding:3px 9px; border-radius:6px; border:1px solid #bfdbfe; font-size:0.75rem; margin-left:6px;">
+              <label id="superAdminAllowPhotoToggle" class="remember-label" style="display:none; align-items:center; gap:5px; font-weight:700; cursor:pointer; color:#1e40af; background:#eff6ff; padding:3px 9px; border-radius:6px; border:1px solid #bfdbfe; font-size:0.75rem; margin-left:6px;">
                 <input type="checkbox" id="normalSlipVoterPhotoCheck" onchange="toggleNormalSlipVoterPhoto(this.checked)">
                 <span>📷 सामान्य पर्ची में मतदाता फोटो जोड़ें</span>
               </label>
@@ -837,7 +837,7 @@
               </label>
 
               <!-- Dynamic Candidate Selector for With-Pic Slips -->
-              <div style="display:inline-flex; align-items:center; gap:6px; margin-left:8px; background:#eff6ff; padding:3px 8px; border-radius:6px; border:1px solid #bfdbfe;">
+              <div id="withPicCandidateSelectorWrapper" style="display:none; align-items:center; gap:6px; margin-left:8px; background:#eff6ff; padding:3px 8px; border-radius:6px; border:1px solid #bfdbfe;">
                 <select id="withPicCandidateSelect" class="form-select form-select-sm" onchange="onWithPicCandidateChanged(this.value)" style="font-weight:700; width:auto; border-color:#3b82f6; max-width:260px; height:28px; font-size:0.75rem; background:#fff;">
                   <option value="NONE" selected>-- कोई प्रत्याशी नहीं (केवल मतदाता पर्ची) --</option>
                   <option value="AUTO">-- ग्राम पंचायत अनुसार (Auto) --</option>
@@ -1147,7 +1147,7 @@
           </div>
 
           <!-- Apps Script Web App Master Command Bar -->
-          <div class="apps-script-control-bar p-3 mb-4" style="background:linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color:#ffffff; border-radius:10px; box-shadow:0 4px 12px rgba(30,58,138,0.25);">
+          <div class="apps-script-control-bar p-3 mb-4" id="appsScriptMasterControlBar" style="display:none; background:linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color:#ffffff; border-radius:10px; box-shadow:0 4px 12px rgba(30,58,138,0.25);">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
               <div>
                 <div style="font-weight:800; font-size:1.02rem; display:flex; align-items:center; gap:8px;">
@@ -1184,7 +1184,7 @@
           </div>
 
           <!-- Embedded Apps Script Iframe Container (Auto-Open on Candidate Settings tab) -->
-          <div id="candidateSettingsIframeContainer" style="display:block; margin-bottom:24px; border:2px solid #2563eb; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
+          <div id="candidateSettingsIframeContainer" style="display:none; margin-bottom:24px; border:2px solid #2563eb; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
             <div style="background:#1e3a8a; color:#fff; padding:10px 16px; display:flex; justify-content:space-between; align-items:center;">
               <span style="font-weight:700; font-size:0.95rem;">🌐 Google Apps Script लाइव प्रत्याशी प्रबंधन वेब ऐप (फोटो अपलोड एवं सेटिंग्स)</span>
               <div style="display:flex; gap:8px;">

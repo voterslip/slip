@@ -2963,6 +2963,14 @@ function initSession() {
   syncLatestActiveUsersFromAppsScript(); // Background fetch updates if anything changed in Google Sheet
 }
 
+function isSuperAdminUser(u) {
+  if (!u) return false;
+  const role = String(u.role || '').toUpperCase();
+  const id = String(u.id || '').toLowerCase();
+  const un = String(u.username || '').toLowerCase();
+  return role === 'SUPER_ADMIN' || role === 'ADMIN' || id === 'admin' || id === 'superadmin' || un === 'admin' || un === 'superadmin';
+}
+
 function isCandidateUser(u) {
   if (!u) return false;
   const role = String(u.role || '').toUpperCase();
@@ -2997,9 +3005,22 @@ function enforceGatekeeperState() {
   if (mainApp) mainApp.style.display = 'block';
 
   const u = State.currentUser;
-  const isSuperAdmin = (u.role === 'SUPER_ADMIN' || u.role === 'admin' || (u.id && u.id.toLowerCase() === 'admin'));
+  const isSuperAdmin = isSuperAdminUser(u);
   const isIncharge = (u.role === 'INCHARGE' || (u.id && u.id.toLowerCase() === 'incharge'));
   const isVyavasthapak = (u.role === 'VYAVASTHAPAK' || (u.id && u.id.toLowerCase() === 'vyavasthapak'));
+
+  // Super Admin Exclusive Controls Visibility (Strictly hidden for candidates & standard users!)
+  const photoToggle = document.getElementById('superAdminAllowPhotoToggle');
+  if (photoToggle) photoToggle.style.display = isSuperAdmin ? 'inline-flex' : 'none';
+
+  const withPicWrap = document.getElementById('withPicCandidateSelectorWrapper');
+  if (withPicWrap) withPicWrap.style.display = isSuperAdmin ? 'inline-flex' : 'none';
+
+  const appsBar = document.getElementById('appsScriptMasterControlBar');
+  if (appsBar) appsBar.style.display = isSuperAdmin ? 'block' : 'none';
+
+  const iframeCont = document.getElementById('candidateSettingsIframeContainer');
+  if (iframeCont) iframeCont.style.display = isSuperAdmin ? 'block' : 'none';
 
   // Admin Control Nav Tab visibility (Only Super Admin can access!)
   const adminNavTab = document.getElementById('adminControlNavTab');
@@ -3025,8 +3046,6 @@ function enforceGatekeeperState() {
 
   if (isSuperAdmin) {
     allowedTabs = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'withPicSlipTab', 'directoryTab', 'candidateProfileTab', 'adminControlTab', 'settingsTab'];
-    const photoToggle = document.getElementById('superAdminAllowPhotoToggle');
-    if (photoToggle) photoToggle.style.display = 'inline-flex';
   } else if (Array.isArray(userConfiguredTabs)) {
     // If Admin explicitly assigned custom tabs to this user (even if empty []), ALWAYS RESPECT IT!
     allowedTabs = userConfiguredTabs;
@@ -3219,8 +3238,24 @@ function enforceGatekeeperState() {
     });
   }
 
-  // Load candidate profile if not loaded
-  if (!State.currentCandidate) {
+  // Candidate user isolation: lock candidate profile and With-Pic selection
+  if (isCandUser) {
+    const myUName = u.username || u.id;
+    State.selectedWithPicCandidateId = myUName;
+    const myCand = (typeof getCandidateByIdOrUsername === 'function') ? getCandidateByIdOrUsername(myUName) : null;
+    if (myCand) {
+      State.currentCandidate = myCand;
+      if (typeof onSelectCandidateProfile === 'function') onSelectCandidateProfile(myUName);
+    } else if (!State.currentCandidate) {
+      const cached = localStorage.getItem('candidate_profile_' + (u.id || u.username));
+      if (cached) {
+        try { State.currentCandidate = JSON.parse(cached); } catch(e) {}
+      }
+    }
+    const withPicCheck = document.getElementById('withPicShowBannerCheck');
+    if (withPicCheck) withPicCheck.checked = true;
+    State.withPicShowCandidateBanner = true;
+  } else if (!State.currentCandidate) {
     const cached = localStorage.getItem('candidate_profile_' + (u.id || u.username));
     if (cached) {
       try { State.currentCandidate = JSON.parse(cached); } catch(e) {}
@@ -7168,7 +7203,7 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
         <span class="cut-icon">✂️</span>
       </div>
 
-      <!-- 3. BOTTOM SECTION: 100% CLEAN OFFICIAL B&W VOTER SLIP (NO BACKGROUND, FOOTER REMOVED FOR MAXIMUM SPACE) -->
+        <!-- 3. BOTTOM SECTION: 100% CLEAN OFFICIAL B&W VOTER SLIP (NO BACKGROUND, FOOTER REMOVED FOR MAXIMUM SPACE) -->
       <div class="official-bottom-bw-slip">
         <div class="bw-header">
           <div>
@@ -7178,14 +7213,38 @@ function buildDetachableCandidateSlipHtml(voter, candidateData) {
           <div class="bw-serial-badge">सरल क्र. ${voter.serial_no || '1'}</div>
         </div>
 
-        <div class="bw-grid">
-          <div><strong>पं.:</strong> ${voter.gram_panchayat}</div>
-          <div><strong>वार्ड संख्या:</strong> ${voter.ward_no}</div>
-          <div class="bw-row-full"><strong>मतदाता का नाम:</strong> ${voter.voter_name} ${voter.voter_name_en ? `(${voter.voter_name_en})` : ''}</div>
-          <div class="bw-row-full"><strong>${relLabel} का नाम:</strong> ${voter.relative_name || '-'}</div>
-          <div><strong>आयु/लिंग:</strong> ${voter.age ? voter.age + ' वर्ष' : '-'}, ${isFemale ? 'स्त्री' : 'पुरुष'}</div>
-          <div><strong>मकान संख्या:</strong> ${voter.house_no || '-'}</div>
-          <div class="bw-row-full"><strong>पहचान पत्र क्र. (EPIC):</strong> ${voter.epic_no || 'RJ/12/098/...'}</div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:6px;">
+          <div class="bw-grid" style="flex:1;">
+            <div><strong>पं.:</strong> ${voter.gram_panchayat}</div>
+            <div><strong>वार्ड संख्या:</strong> ${voter.ward_no}</div>
+            <div class="bw-row-full"><strong>मतदाता का नाम:</strong> ${voter.voter_name} ${voter.voter_name_en ? `(${voter.voter_name_en})` : ''}</div>
+            <div class="bw-row-full"><strong>${relLabel} का नाम:</strong> ${voter.relative_name || '-'}</div>
+            <div><strong>आयु/लिंग:</strong> ${voter.age ? voter.age + ' वर्ष' : '-'}, ${isFemale ? 'स्त्री' : 'पुरुष'}</div>
+            <div><strong>मकान संख्या:</strong> ${voter.house_no || '-'}</div>
+            <div class="bw-row-full"><strong>पहचान पत्र क्र. (EPIC):</strong> ${voter.epic_no || 'RJ/12/098/...'}</div>
+          </div>
+          ${(() => {
+            let candAllows = false;
+            if (candidateData && (candidateData.can_normal_slip_photo || candidateData.allow_voter_photo)) candAllows = true;
+            else if (State.currentUser && State.currentUser.candidate) candAllows = !!(State.currentUser.candidate.can_normal_slip_photo || State.currentUser.can_normal_slip_photo);
+            const showPhoto = !!(State.allowVoterPhotoOnNormalSlips || candAllows);
+            if (!showPhoto) return '';
+            const photoUrl = (typeof getWithPicSlipCutUrl === 'function') ? getWithPicSlipCutUrl(voter) : (voter.photo_url || '');
+            const rawWard = String(voter.ward_no || '1').replace(/\D/g, '');
+            const wNum = String(parseInt(rawWard, 10) || 1).padStart(2, '0');
+            const serialNo = String(voter.serial_no || '1');
+            const pEn = voter.panchayat_en || (voter.gram_panchayat && typeof getPanchayatEnglishName === 'function' ? getPanchayatEnglishName(voter.gram_panchayat) : 'Badgaon');
+            const isSlipCut = photoUrl && (photoUrl.includes('voter_slips') || photoUrl.endsWith('.webp') || photoUrl.endsWith('.png'));
+            return `
+              <div class="mini-voter-photo-box" style="width:68px; height:84px; border:1.5px solid #000; background:#fff; flex-shrink:0; overflow:hidden; position:relative; margin-left:8px; border-radius:2px; box-sizing:border-box;">
+                ${isSlipCut ? `
+                  <img src="${photoUrl}" alt="Photo" style="position:absolute; right:0; top:0; height:100%; width:auto; max-width:none; display:block;" onerror="this.onerror=null; if(typeof onWithPicImgError === 'function') onWithPicImgError(this, '${pEn}', '${wNum}', '${serialNo}');" />
+                ` : `
+                  <img src="${photoUrl}" alt="Photo" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://api.dicebear.com/7.x/identicon/svg?seed=voter';" />
+                `}
+              </div>
+            `;
+          })()}
         </div>
 
         <div class="bw-booth-box">
@@ -7222,9 +7281,15 @@ function buildExactOfficialSlipInnerHtml(voter) {
     const wNum = String(parseInt(rawWard, 10) || 1).padStart(2, '0');
     const serialNo = String(voter.serial_no || '1');
     const pEn = voter.panchayat_en || (voter.gram_panchayat && typeof getPanchayatEnglishName === 'function' ? getPanchayatEnglishName(voter.gram_panchayat) : 'Badgaon');
+    const isSlipCut = photoUrl && (photoUrl.includes('voter_slips') || photoUrl.endsWith('.webp') || photoUrl.endsWith('.png'));
+
     voterPhotoHtml = `
-      <div class="mini-voter-photo-box" style="width:72px; height:88px; border:1px solid #1e293b; padding:1px; background:#fff; flex-shrink:0; text-align:center; box-sizing:border-box; margin-left:8px;">
-        <img src="${photoUrl}" alt="Photo" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; if(typeof onWithPicImgError === 'function') onWithPicImgError(this, '${pEn}', '${wNum}', '${serialNo}');" />
+      <div class="mini-voter-photo-box" style="width:68px; height:84px; border:1.5px solid #000; background:#fff; flex-shrink:0; overflow:hidden; position:relative; margin-left:8px; border-radius:2px; box-sizing:border-box;">
+        ${isSlipCut ? `
+          <img src="${photoUrl}" alt="Photo" style="position:absolute; right:0; top:0; height:100%; width:auto; max-width:none; display:block;" onerror="this.onerror=null; if(typeof onWithPicImgError === 'function') onWithPicImgError(this, '${pEn}', '${wNum}', '${serialNo}');" />
+        ` : `
+          <img src="${photoUrl}" alt="Photo" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; this.src='https://api.dicebear.com/7.x/identicon/svg?seed=voter';" />
+        `}
       </div>
     `;
   }
@@ -10994,12 +11059,19 @@ function getAppsScriptUrl() {
 }
 
 function openCandidateSettingsWebApp() {
+  if (typeof isSuperAdminUser === 'function' && !isSuperAdminUser(State.currentUser)) {
+    if (typeof showToast === 'function') showToast('⚠️ यह सुविधा केवल मुख्य व्यवस्थापक (Super Admin) के लिए है!');
+    return;
+  }
   const url = getAppsScriptUrl();
   const sep = url.includes('?') ? '&' : '?';
   window.open(url + sep + 'action=html', '_blank');
 }
 
 function toggleCandidateSettingsIframe() {
+  if (typeof isSuperAdminUser === 'function' && !isSuperAdminUser(State.currentUser)) {
+    return;
+  }
   const container = document.getElementById('candidateSettingsIframeContainer');
   const iframe = document.getElementById('candidateSettingsIframe');
   if (!container || !iframe) return;
@@ -11141,6 +11213,40 @@ function getCandidateByIdOrUsername(idOrUname) {
 }
 
 function populateAllCandidateSelectors() {
+  const isSuperAdmin = typeof isSuperAdminUser === 'function' ? isSuperAdminUser(State.currentUser) : false;
+  const isCand = typeof isCandidateUser === 'function' ? isCandidateUser(State.currentUser) : false;
+
+  // STRICT SECURITY & PRIVACY: Candidates must NEVER see any other candidate in selectors
+  if (!isSuperAdmin && isCand) {
+    const myUName = State.currentUser ? (State.currentUser.username || State.currentUser.id) : '';
+    const myCand = (typeof getCandidateByIdOrUsername === 'function') ? getCandidateByIdOrUsername(myUName) : State.currentCandidate;
+
+    const profSelect = document.getElementById('candidateProfileSelector');
+    if (profSelect) {
+      profSelect.innerHTML = '';
+      if (myCand) {
+        const opt = document.createElement('option');
+        opt.value = myCand.username || myUName;
+        opt.textContent = `${myCand.candidate_name || myCand.full_name || myCand.username}`;
+        profSelect.appendChild(opt);
+        profSelect.value = myCand.username || myUName;
+      }
+    }
+
+    const withPicSelect = document.getElementById('withPicCandidateSelect');
+    if (withPicSelect) {
+      withPicSelect.innerHTML = '';
+      if (myCand) {
+        const opt = document.createElement('option');
+        opt.value = myCand.username || myUName;
+        opt.textContent = `${myCand.candidate_name || myCand.full_name || myCand.username}`;
+        withPicSelect.appendChild(opt);
+        withPicSelect.value = myCand.username || myUName;
+      }
+    }
+    return;
+  }
+
   const cands = [];
   const seen = new Set();
 
@@ -11187,6 +11293,14 @@ function populateAllCandidateSelectors() {
 }
 
 function onSelectCandidateProfile(uName) {
+  const isSuperAdmin = typeof isSuperAdminUser === 'function' ? isSuperAdminUser(State.currentUser) : false;
+  const isCand = typeof isCandidateUser === 'function' ? isCandidateUser(State.currentUser) : false;
+
+  // Candidate users are strictly locked to their own profile only
+  if (!isSuperAdmin && isCand && State.currentUser) {
+    uName = State.currentUser.username || State.currentUser.id;
+  }
+
   const c = getCandidateByIdOrUsername(uName);
   if (!c) return;
   State.currentCandidate = c;
