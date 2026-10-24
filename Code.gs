@@ -465,13 +465,25 @@ function showAppInfo() {
  */
 function doGet(e) {
   var params = (e && e.parameter) ? e.parameter : {};
-  var action = params.action || "";
+  var action = (params.action || "").trim();
   var callback = params.callback;
 
-  // 1. यदि ब्राउज़र में सीधे खोला गया है अथवा page=candidate_settings या action=html/candidateSettings है,
-  // तो सीधे सम्पूर्ण प्रत्याशी प्रबंधन वेब ऐप HTML आउटपुट दें!
-  if (!action || action === "candidateSettings" || action === "candidate_settings" || action === "html" || action === "admin" || params.page === "candidate_settings") {
-    return HtmlService.createHtmlOutput(buildCandidateSettingsWebHtml())
+  // JSON API कॉल्स की सूची
+  var jsonActions = ["ping", "init", "setup", "setupAllSheets", "getSettings", "getUsers", "getCandidates", "getPortalJson", "getFullJson", "syncJson", "login", "saveCandidate", "deleteCandidate"];
+
+  // 1. यदि कोई JSON एक्शन नहीं है अथवा वेब पेज मांगा गया है, तो सीधे सम्पूर्ण प्रत्याशी प्रबंधन वेब ऐप HTML आउटपुट दें!
+  if (!action || !jsonActions.includes(action) || action === "candidateSettings" || action === "candidate_settings" || action === "html" || action === "admin") {
+    var htmlContent = "";
+    try {
+      htmlContent = HtmlService.createTemplateFromFile("CandidateSettings").evaluate().getContent();
+    } catch(e1) {
+      try {
+        htmlContent = HtmlService.createTemplateFromFile("Index").evaluate().getContent();
+      } catch(e2) {
+        htmlContent = buildCandidateSettingsWebHtml();
+      }
+    }
+    return HtmlService.createHtmlOutput(htmlContent)
       .setTitle("🗳️ राजस्थान पंचायत आम चुनाव 2026 - सुपर एडमिन प्रत्याशी सेटिंग्स एवं नियंत्रण कक्ष")
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');

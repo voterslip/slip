@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>प्रत्याशी प्रबंधन एवं सेटिंग्स कमान कक्ष - पंचायत चुनाव 2026</title>
+  <style>
+    :root {
+      --primary: #1e3a8a; --primary-light: #3b82f6; --success: #059669;
+      --danger: #dc2626; --warning: #d97706; --bg: #f8fafc;
+      --card-bg: #ffffff; --text: #0f172a; --text-muted: #64748b;
+      --border: #cbd5e1;
+    }
+    * { box-sizing: border-box; margin:0; padding:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 16px; font-size: 13px; line-height: 1.5; }
+    .top-header { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color: #fff; padding: 14px 20px; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(30,58,138,0.2); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; }
+    .top-title { font-size: 1.25rem; font-weight: 800; display:flex; align-items:center; gap:8px; }
+    .top-sub { font-size: 0.8rem; opacity: 0.9; margin-top: 3px; }
+    .top-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .btn { padding: 7px 14px; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; display:inline-flex; align-items:center; gap:5px; }
+    .btn-primary { background: var(--primary-light); color:#fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-success { background: var(--success); color:#fff; }
+    .btn-success:hover { background: #047857; }
+    .btn-warning { background: var(--warning); color:#fff; }
+    .btn-danger { background: var(--danger); color:#fff; }
+    .btn-outline { background: #fff; border-color: var(--border); color: var(--text); }
+    .btn-outline:hover { background: #f1f5f9; }
+    .main-grid { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
+    @media(max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+    .panel-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+    .panel-head { font-size: 14px; font-weight: 800; color: #1e3a8a; margin-bottom: 12px; display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+    .cand-search-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; margin-bottom: 10px; outline: none; }
+    .cand-search-input:focus { border-color: var(--primary-light); }
+    .cand-list { max-height: 680px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+    .cand-item { border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: #fff; cursor: pointer; transition: all 0.15s; display: flex; gap: 10px; align-items: center; position: relative; }
+    .cand-item:hover { border-color: var(--primary-light); background: #f0f7ff; }
+    .cand-item.active { border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 2px rgba(37,99,235,0.2); }
+    .cand-thumb { width: 44px; height: 52px; border-radius: 6px; object-fit: cover; background: #e2e8f0; border: 1px solid #cbd5e1; flex-shrink: 0; }
+    .cand-item-info { flex: 1; min-width: 0; }
+    .cand-item-name { font-weight: 800; font-size: 13px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cand-item-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .cand-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-top: 3px; }
+    .badge-active { background: #dcfce7; color: #15803d; }
+    .badge-inactive { background: #fee2e2; color: #b91c1c; }
+    .badge-symbol { background: #fef3c7; color: #b45309; font-weight:700; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group.full-width { grid-column: 1 / -1; }
+    .form-label { font-size: 11px; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.3px; }
+    .form-input, .form-select, .form-textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-weight: 600; outline: none; background: #fff; }
+    .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+    .photo-upload-section { background: #f1f5f9; border: 2px dashed #94a3b8; border-radius: 10px; padding: 14px; text-align: center; display: flex; gap: 16px; align-items: center; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
+    .photo-preview-box { width: 100px; height: 120px; border-radius: 8px; border: 2px solid #3b82f6; overflow: hidden; background: #fff; position: relative; box-shadow: 0 2px 6px rgba(0,0,0,0.1); flex-shrink: 0; }
+    .photo-preview-box img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .photo-desc { text-align: left; max-width: 380px; }
+    .specimen-card { background: #fff; border: 2px solid #1e3a8a; border-radius: 8px; overflow: hidden; max-width: 440px; margin: 16px auto; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+    .specimen-top { background: linear-gradient(to bottom, #ffffff, #fffbeb); border-bottom: 2px solid #1e3a8a; padding: 10px 12px; display: flex; gap: 10px; align-items: center; }
+    .specimen-photo { width: 62px; height: 75px; border-radius: 4px; border: 1px solid #000; object-fit: cover; background: #f8fafc; flex-shrink: 0; }
+    .specimen-info { flex: 1; text-align: center; }
+    .specimen-title { font-size: 10px; font-weight: 700; color: #1e3a8a; }
+    .specimen-name { font-size: 15px; font-weight: 900; color: #b91c1c; margin: 2px 0; }
+    .specimen-post { font-size: 11px; font-weight: 800; background: #1e3a8a; color: #fff; padding: 2px 6px; border-radius: 3px; display: inline-block; }
+    .specimen-gp { font-size: 10px; font-weight: 700; color: #000; margin-top: 3px; }
+    .specimen-symbol { width: 56px; text-align: center; flex-shrink: 0; }
+    .specimen-symbol-box { width: 52px; height: 52px; border: 1.5px solid #000; border-radius: 4px; padding: 2px; background: #fff; display: flex; align-items: center; justify-content: center; }
+    .specimen-symbol-name { font-size: 10px; font-weight: 800; color: #000; margin-top: 2px; }
+    .specimen-divider { border-top: 1px dashed #64748b; padding: 4px; text-align: center; font-size: 9px; font-weight: 700; color: #475569; background: #f8fafc; }
+    .specimen-bottom { padding: 8px 10px; font-size: 10px; color: #334155; line-height: 1.4; }
+    .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; font-weight: 700; font-size: 13px; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 9999; display: none; }
+    .toast.success { background: #059669; }
+    .toast.error { background: #dc2626; }
+  </style>
+</head>
+<body>
+  <!-- Top Header Bar -->
+  <div class="top-header">
+    <div>
+      <div class="top-title"><span>🗳️ राजस्थान पंचायती राज चुनाव - 2026</span> <span style="font-size:11px; background:rgba(255,255,255,0.2); padding:3px 8px; border-radius:12px;">SUPER ADMIN COMMAND</span></div>
+      <div class="top-sub">सुपर एडमिन प्रत्याशी प्रबंधन, रंगीन फोटो अपलोड एवं एकल मास्टर शीट सिंक कमान कक्ष</div>
+    </div>
+    <div class="top-actions">
+      <button type="button" class="btn btn-warning" onclick="createNewCandidate()">➕ नया प्रत्याशी जोड़ें</button>
+      <button type="button" class="btn btn-primary" onclick="refreshCandidatesList()">🔄 रीफ्रेश सूची</button>
+      <button type="button" class="btn btn-success" onclick="exportPortalJson()">📥 डाउनलोड portal_users.json</button>
+      <button type="button" class="btn btn-outline" onclick="copyPortalJson()">📋 कॉपी JSON</button>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <!-- Left Column: Candidates List -->
+    <div class="panel-card">
+      <div class="panel-head">
+        <span>👤 पंजीकृत प्रत्याशी (<span id="candCountText">0</span>)</span>
+        <button type="button" class="btn btn-xs btn-outline" onclick="createNewCandidate()" style="padding:2px 8px; font-size:11px;">+ नया</button>
+      </div>
+      <input type="text" id="candSearchInput" class="cand-search-input" placeholder="🔍 प्रत्याशी, पद या पंचायत खोजें..." oninput="filterCandidates(this.value)">
+      <div class="cand-list" id="candidatesListContainer">
+        <!-- Candidate Cards rendered here -->
+      </div>
+    </div>
+
+    <!-- Right Column: Candidate Editor & Live Specimen -->
+    <div class="panel-card">
+      <div class="panel-head">
+        <span id="editorTitleText">✏️ प्रत्याशी विवरण एवं सेटिंग्स संपादन</span>
+        <div>
+          <button type="button" class="btn btn-danger btn-xs" id="deleteCandBtn" onclick="deleteCurrentCandidate()" style="display:none; padding:3px 10px;">🗑️ प्रत्याशी हटाएं</button>
+        </div>
+      </div>
+
+      <!-- Photo Upload Box (Key Requirement) -->
+      <div class="photo-upload-section">
+        <div class="photo-preview-box" onclick="document.getElementById('photoFileInput').click()" title="फोटो बदलने हेतु क्लिक करें">
+          <img id="photoPreviewImg" src="https://api.dicebear.com/7.x/identicon/svg?seed=candidate" alt="Photo">
+        </div>
+        <div class="photo-desc">
+          <label style="font-weight:800; font-size:12px; color:#1e3a8a; display:block; margin-bottom:4px;">📸 प्रत्याशी की रंगीन फोटो (Color Photo):</label>
+          <p style="font-size:11px; color:#64748b; margin-bottom:8px;">मतदाता पर्ची के शीर्ष प्रचार बैनर पर यह फोटो पूरी तरह रंगीन मुद्रित होगी। फोटो का आकार स्वतः ऑप्टिमाइज़ होकर गूगल शीट में सुरक्षित होगा।</p>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <label for="photoFileInput" class="btn btn-primary" style="cursor:pointer; margin:0;">📁 फोटो चुनें / बदलें</label>
+            <input type="file" id="photoFileInput" accept="image/*" style="display:none;" onchange="onPhotoFileSelected(event)">
+            <button type="button" id="removePhotoBtn" class="btn btn-outline" onclick="removePhoto()" style="display:none;">❌ हटाएं</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Form Details Grid -->
+      <form id="candidateForm" onsubmit="handleFormSubmit(event)">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="formUsername">यूजरनेम (Username) *:</label>
+            <input type="text" id="formUsername" class="form-input" required placeholder="उदा. kamla / sarpanch01" oninput="updateLiveSpecimen()">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="formPassword">पासवर्ड (Password) *:</label>
+            <input type="text" id="formPassword" class="form-input" required value="bhinai2026">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="formCandName">प्रत्याशी का पूरा नाम (Full Name) *:</label>
+            <input type="text" id="formCandName" class="form-input" required placeholder="उदा. श्रीमती कमला देवी" oninput="updateLiveSpecimen()" style="color:#b91c1c; font-weight:800;">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="formMobile">सम्पर्क / मोबाइल नं.:</label>
+            <input type="tel" id="formMobile" class="form-input" placeholder="उदा. 9876543210" maxlength="10">
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="formPost">चुनाव पद (Contesting Post) *:</label>
+            <select id="formPost" class="form-select" onchange="onPostChanged(this.value)">
+              <option value="सरपंच">सरपंच पद हेतु</option>
+              <option value="पंचायत समिति सदस्य">पंचायत समिति सदस्य हेतु</option>
+              <option value="जिला परिषद सदस्य">जिला परिषद सदस्य हेतु</option>
+              <option value="वार्ड पंच">वार्ड पंच पद हेतु</option>
+              <option value="उपसरपंच">उपसरपंच पद हेतु</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="formGp">मुख्य ग्राम पंचायत (Gram Panchayat) *:</label>
+            <select id="formGp" class="form-select" onchange="updateLiveSpecimen()"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="formPrintWard">पर्ची पर छपने वाला वार्ड नं.:</label>
+            <input type="text" id="formPrintWard" class="form-input" placeholder="उदा. 2 (सरपंच हेतु खाली/ALL)" oninput="updateLiveSpecimen()">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="formSymbolSelect">चुनाव चिन्ह (Election Symbol) *:</label>
+            <select id="formSymbolSelect" class="form-select" onchange="onSymbolChanged(this.value)"></select>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group full-width">
+            <label class="form-label" for="formAllowedGps">अनुमति प्राप्त पंचायतें (Allowed Panchayats):</label>
+            <input type="text" id="formAllowedGps" class="form-input" placeholder="उदा. बांदनवाड़ा या बांदनवाड़ा, देवलियाकलां या ALL">
+          </div>
+          <div class="form-group full-width">
+            <label class="form-label" for="formAllowedWards">आंशिक वार्ड दायरा (Allowed Panchayat Wards):</label>
+            <input type="text" id="formAllowedWards" class="form-input" placeholder="उदा. बांदनवाड़ा: ALL या बांदनवाड़ा: 1,2,3 | देवलियाकलां: 1,2,3,4">
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group full-width">
+            <label class="form-label" for="formSlogan">चुनाव प्रचार अपील / नारा (Campaign Slogan):</label>
+            <textarea id="formSlogan" class="form-textarea" rows="2" placeholder="क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।" oninput="updateLiveSpecimen()"></textarea>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="formDate">मतदान दिनांक (Election Date):</label>
+            <input type="text" id="formDate" class="form-input" value="15 अक्टूबर 2026" oninput="updateLiveSpecimen()">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="formTime">मतदान समय (Voting Time):</label>
+            <input type="text" id="formTime" class="form-input" value="प्रातः 7:00 बजे से सायं 5:00 बजे तक" oninput="updateLiveSpecimen()">
+          </div>
+          <div class="form-group" style="justify-content:center;">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:700; margin-top:14px;">
+              <input type="checkbox" id="formStatus" checked style="width:16px; height:16px;"> 🟢 खाता सक्रिय रखें (ACTIVE)
+            </label>
+          </div>
+        </div>
+
+        <!-- Live Perforated Slip Specimen Card -->
+        <div style="margin-top:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+          <div style="font-weight:800; font-size:12px; color:#334155; margin-bottom:6px; text-align:center;">📋 लाइव पर्ची प्रारूप नमूना (Live Voter Slip Specimen)</div>
+          <div class="specimen-card" id="liveSpecimenCard">
+            <div class="specimen-top">
+              <img id="specPhoto" class="specimen-photo" src="https://api.dicebear.com/7.x/identicon/svg?seed=candidate" alt="Photo">
+              <div class="specimen-info">
+                <div class="specimen-title">।। श्री गणेशाय नमः ।। 🙏 विनम्र अपील</div>
+                <div class="specimen-name" id="specName">कमला देवी</div>
+                <div><span class="specimen-post" id="specPost">पंचायत समिति सदस्य प्रत्याशी</span></div>
+                <div class="specimen-gp" id="specGpRow">ग्राम पंचायत: बांदनवाड़ा • वार्ड नं.: 2</div>
+                <div style="font-size:9px; color:#475569; margin-top:2px;">📅 मतदान: <strong id="specDate">15 अक्टूबर 2026</strong></div>
+              </div>
+              <div class="specimen-symbol">
+                <div class="specimen-symbol-box" id="specSymbolBox">✋</div>
+                <div class="specimen-symbol-name" id="specSymbolName">हाथ</div>
+              </div>
+            </div>
+            <div class="specimen-divider">✂️ --- यहाँ से काटकर मतदाता को दें --- ✂️</div>
+            <div class="specimen-bottom">
+              <div style="display:flex; justify-content:space-between; font-weight:700;"><span>मतदाता: रमेश कुमार</span> <span>क्रम: 104</span></div>
+              <div style="font-size:9px; color:#64748b;">मतदान केंद्र: रा.उ.मा.वि. कक्ष-1</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
+          <button type="submit" id="saveSubmitBtn" class="btn btn-success" style="flex:1; padding:12px; font-size:14px; justify-content:center;">
+            💾 गूगल शीट में सुरक्षित करें (Save to Google Sheet)
+          </button>
+          <button type="button" class="btn btn-outline" onclick="createNewCandidate()" style="padding:12px 18px;">
+            ➕ नया प्रत्याशी
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toastBox" class="toast"></div>
+
+  <script>
+    var candidates = ' + candidatesJson + ';
+    var officialGps = ' + gpsJson + ';
+    var officialSymbols = ' + symbolsJson + ';
+    var activeCandidate = null;
+    var currentPhotoBase64 = "";
+
+    initApp();
+
+    function initApp() {
+      populateDropdowns();
+      renderCandidatesList();
+      if (candidates.length > 0) {
+        selectCandidate(candidates[0].username);
+      } else {
+        createNewCandidate();
+      }
+    }
+
+    function populateDropdowns() {
+      var gpSelect = document.getElementById("formGp");
+      gpSelect.innerHTML = "";
+      officialGps.forEach(function(gp) {
+        var opt = document.createElement("option");
+        opt.value = gp; opt.textContent = gp;
+        gpSelect.appendChild(opt);
+      });
+
+      var symSelect = document.getElementById("formSymbolSelect");
+      symSelect.innerHTML = "";
+      officialSymbols.forEach(function(sym) {
+        var opt = document.createElement("option");
+        opt.value = sym; opt.textContent = sym;
+        symSelect.appendChild(opt);
+      });
+    }
+
+    function renderCandidatesList(filterText) {
+      var container = document.getElementById("candidatesListContainer");
+      container.innerHTML = "";
+      var q = (filterText || "").trim().toLowerCase();
+      var count = 0;
+
+      candidates.forEach(function(c) {
+        var text = (c.candidate_name + " " + c.post + " " + c.panchayat + " " + c.username).toLowerCase();
+        if (q && text.indexOf(q) === -1) return;
+        count++;
+
+        var item = document.createElement("div");
+        var isActive = activeCandidate && (activeCandidate.username === c.username);
+        item.className = "cand-item" + (isActive ? " active" : "");
+        item.onclick = function() { selectCandidate(c.username); };
+
+        var photoSrc = c.photo_url || (c.username === "kamla" || c.username === "kamala" ? "./assets/kamala_photo.jpg" : "https://api.dicebear.com/7.x/identicon/svg?seed=" + encodeURIComponent(c.username));
+
+        item.innerHTML = 
+          '<img class="cand-thumb" src="' + photoSrc + '" alt="' + c.candidate_name + '" onerror="this.src=\\'https://api.dicebear.com/7.x/identicon/svg?seed=cand\\'">' +
+          '<div class="cand-item-info">' +
+          '  <div class="cand-item-name">' + (c.candidate_name || c.username) + '</div>' +
+          '  <div class="cand-item-meta">' + (c.post || "") + ' • ' + (c.panchayat || "") + '</div>' +
+          '  <div>' +
+          '    <span class="cand-badge ' + (c.status === "ACTIVE" ? "badge-active" : "badge-inactive") + '">' + (c.status === "ACTIVE" ? "🟢 एक्टिव" : "🔴 बंद") + '</span> ' +
+          '    <span class="cand-badge badge-symbol">🚩 ' + (c.symbol_name || "चिन्ह") + '</span>' +
+          '  </div>' +
+          '</div>';
+
+        container.appendChild(item);
+      });
+
+      document.getElementById("candCountText").textContent = count;
+    }
+
+    function filterCandidates(q) {
+      renderCandidatesList(q);
+    }
+
+    function selectCandidate(uName) {
+      var c = candidates.find(function(x) { return x.username === uName; });
+      if (!c) return;
+      activeCandidate = c;
+      currentPhotoBase64 = c.photo_url || "";
+
+      document.getElementById("editorTitleText").textContent = "✏️ " + (c.candidate_name || c.username) + " का विवरण संपादन";
+      document.getElementById("deleteCandBtn").style.display = (c.username === "admin" ? "none" : "inline-block");
+
+      document.getElementById("formUsername").value = c.username;
+      document.getElementById("formUsername").readOnly = (c.username === "admin" || c.username === "kamala" || c.username === "kamla");
+      document.getElementById("formPassword").value = c.password || "bhinai2026";
+      document.getElementById("formCandName").value = c.candidate_name || "";
+      document.getElementById("formMobile").value = c.mobile || "";
+      document.getElementById("formPost").value = c.post || "सरपंच";
+      document.getElementById("formGp").value = c.panchayat || officialGps[0];
+      document.getElementById("formPrintWard").value = c.print_ward_no || c.ward || "";
+      document.getElementById("formSymbolSelect").value = c.symbol_name || "हाथ";
+      document.getElementById("formAllowedGps").value = c.allowed_panchayats || c.panchayat || "ALL";
+      document.getElementById("formAllowedWards").value = c.allowed_panchayat_wards || c.allowed_wards || "ALL";
+      document.getElementById("formSlogan").value = c.slogan || "";
+      document.getElementById("formDate").value = c.election_date || "15 अक्टूबर 2026";
+      document.getElementById("formTime").value = c.election_time || "प्रातः 7:00 बजे से सायं 5:00 बजे तक";
+      document.getElementById("formStatus").checked = (c.status === "ACTIVE");
+
+      var previewImg = document.getElementById("photoPreviewImg");
+      if (c.photo_url) {
+        previewImg.src = c.photo_url;
+        document.getElementById("removePhotoBtn").style.display = "inline-block";
+      } else if (c.username === "kamla" || c.username === "kamala") {
+        previewImg.src = "./assets/kamala_photo.jpg";
+        document.getElementById("removePhotoBtn").style.display = "inline-block";
+      } else {
+        previewImg.src = "https://api.dicebear.com/7.x/identicon/svg?seed=" + encodeURIComponent(c.username);
+        document.getElementById("removePhotoBtn").style.display = "none";
+      }
+
+      renderCandidatesList(document.getElementById("candSearchInput").value);
+      updateLiveSpecimen();
+    }
+
+    function createNewCandidate() {
+      activeCandidate = null;
+      currentPhotoBase64 = "";
+      document.getElementById("editorTitleText").textContent = "➕ नया प्रत्याशी जोड़ें";
+      document.getElementById("deleteCandBtn").style.display = "none";
+
+      document.getElementById("formUsername").value = "cand_" + Math.floor(100 + Math.random() * 900);
+      document.getElementById("formUsername").readOnly = false;
+      document.getElementById("formPassword").value = "bhinai2026";
+      document.getElementById("formCandName").value = "";
+      document.getElementById("formMobile").value = "";
+      document.getElementById("formPost").value = "सरपंच";
+      document.getElementById("formGp").value = officialGps[0];
+      document.getElementById("formPrintWard").value = "";
+      document.getElementById("formSymbolSelect").value = "उगता सूरज";
+      document.getElementById("formAllowedGps").value = officialGps[0];
+      document.getElementById("formAllowedWards").value = "ALL";
+      document.getElementById("formSlogan").value = "क्षेत्र के सर्वांगीण विकास एवं खुशहाली हेतु अपने कर्मठ, ईमानदार एवं सेवाभावी प्रत्याशी को भारी मतों से विजयी बनावें।";
+      document.getElementById("formDate").value = "15 अक्टूबर 2026";
+      document.getElementById("formTime").value = "प्रातः 7:00 बजे से सायं 5:00 बजे तक";
+      document.getElementById("formStatus").checked = true;
+
+      document.getElementById("photoPreviewImg").src = "https://api.dicebear.com/7.x/identicon/svg?seed=new";
+      document.getElementById("removePhotoBtn").style.display = "none";
+
+      renderCandidatesList();
+      updateLiveSpecimen();
+    }
+
+    function onPostChanged(post) {
+      var wardInput = document.getElementById("formPrintWard");
+      if (post === "पंचायत समिति सदस्य") {
+        if (!wardInput.value || wardInput.value === "ALL") wardInput.value = "2";
+      } else if (post === "जिला परिषद सदस्य") {
+        if (!wardInput.value || wardInput.value === "ALL") wardInput.value = "15";
+      } else if (post === "सरपंच") {
+        wardInput.value = "ALL";
+      }
+      updateLiveSpecimen();
+    }
+
+    function onSymbolChanged(sym) {
+      updateLiveSpecimen();
+    }
+
+    // Photo Upload Handler with Client-Side Canvas Compression
+    function onPhotoFileSelected(e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      showToast("⏳ फोटो प्रोसेस हो रही है...", "success");
+
+      var reader = new FileReader();
+      reader.onload = function(evt) {
+        var img = new Image();
+        img.onload = function() {
+          var maxW = 360, maxH = 450;
+          var w = img.width, h = img.height;
+          if (w > maxW || h > maxH) {
+            if (w/h > maxW/maxH) {
+              h = Math.round(h * (maxW / w));
+              w = maxW;
+            } else {
+              w = Math.round(w * (maxH / h));
+              h = maxH;
+            }
+          }
+          var canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          var ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+          var base64 = canvas.toDataURL("image/jpeg", 0.82);
+          currentPhotoBase64 = base64;
+          document.getElementById("photoPreviewImg").src = base64;
+          document.getElementById("removePhotoBtn").style.display = "inline-block";
+          updateLiveSpecimen();
+          showToast("✅ फोटो तैयार! सुरक्षित करने हेतु नीचे \\'सुरक्षित करें\\' दबाएं।", "success");
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function removePhoto() {
+      currentPhotoBase64 = "";
+      document.getElementById("photoFileInput").value = "";
+      document.getElementById("photoPreviewImg").src = "https://api.dicebear.com/7.x/identicon/svg?seed=" + encodeURIComponent(document.getElementById("formUsername").value);
+      document.getElementById("removePhotoBtn").style.display = "none";
+      updateLiveSpecimen();
+    }
+
+    function updateLiveSpecimen() {
+      var name = document.getElementById("formCandName").value.trim() || document.getElementById("formUsername").value;
+      var post = document.getElementById("formPost").value;
+      var gp = document.getElementById("formGp").value;
+      var ward = document.getElementById("formPrintWard").value.trim();
+      var sym = document.getElementById("formSymbolSelect").value;
+      var date = document.getElementById("formDate").value;
+
+      document.getElementById("specName").textContent = name;
+      document.getElementById("specPost").textContent = post + " प्रत्याशी";
+
+      var gpRowText = "ग्राम पंचायत: " + gp;
+      if (ward && ward !== "ALL" && post !== "सरपंच") {
+        gpRowText += " • वार्ड नं.: " + ward;
+      }
+      document.getElementById("specGpRow").textContent = gpRowText;
+      document.getElementById("specDate").textContent = date;
+      document.getElementById("specSymbolName").textContent = sym;
+
+      // Symbol Icon
+      var symIconMap = { "हाथ": "✋", "कमल": "🪷", "उगता सूरज": "☀️", "पतंग": "🪁", "बोतल": "🍾", "साइकिल": "🚲", "गिलास": "🥛", "कार": "🚗", "ताला-चाबी": "🔐", "बल्ला": "🏏", "पंखा": "🌀", "सिलेंडर": "🛢️", "मोमबत्ती": "🕯️" };
+      document.getElementById("specSymbolBox").textContent = symIconMap[sym] || "🚩";
+
+      // Photo
+      var previewImg = document.getElementById("photoPreviewImg");
+      document.getElementById("specPhoto").src = previewImg.src;
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      var btn = document.getElementById("saveSubmitBtn");
+      btn.disabled = true; btn.textContent = "⏳ गूगल शीट में सुरक्षित हो रहा है...";
+
+      var candData = {
+        username: document.getElementById("formUsername").value.trim(),
+        password: document.getElementById("formPassword").value.trim(),
+        candidate_name: document.getElementById("formCandName").value.trim(),
+        mobile: document.getElementById("formMobile").value.trim(),
+        post: document.getElementById("formPost").value,
+        panchayat: document.getElementById("formGp").value,
+        allowed_panchayats: document.getElementById("formAllowedGps").value.trim(),
+        print_ward_no: document.getElementById("formPrintWard").value.trim(),
+        ward: document.getElementById("formPrintWard").value.trim(),
+        allowed_panchayat_wards: document.getElementById("formAllowedWards").value.trim(),
+        symbol_name: document.getElementById("formSymbolSelect").value,
+        photo_url: currentPhotoBase64,
+        slogan: document.getElementById("formSlogan").value.trim(),
+        election_date: document.getElementById("formDate").value.trim(),
+        election_time: document.getElementById("formTime").value.trim(),
+        status: document.getElementById("formStatus").checked ? "ACTIVE" : "INACTIVE"
+      };
+
+      function onSaveSuccess(res) {
+        btn.disabled = false; btn.textContent = "💾 गूगल शीट में सुरक्षित करें (Save to Google Sheet)";
+        if (res && res.success) {
+          showToast("✅ " + res.message, "success");
+          if (res.candidates) candidates = res.candidates;
+          else refreshCandidatesList();
+          selectCandidate(candData.username);
+        } else {
+          showToast("⚠️ त्रुटि: " + (res.error || "सुरक्षित नहीं हो सका"), "error");
+        }
+      }
+
+      function onSaveError(err) {
+        btn.disabled = false; btn.textContent = "💾 गूगल शीट में सुरक्षित करें (Save to Google Sheet)";
+        showToast("⚠️ नेटवर्क विफलता: " + err, "error");
+      }
+
+      if (typeof google !== "undefined" && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(onSaveSuccess)
+          .withFailureHandler(onSaveError)
+          .apiSaveCandidate(candData);
+      } else {
+        fetch(window.location.href, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "saveCandidate", candidateData: candData })
+        })
+        .then(function(r) { return r.json(); })
+        .then(onSaveSuccess)
+        .catch(onSaveError);
+      }
+    }
+
+    function deleteCurrentCandidate() {
+      if (!activeCandidate) return;
+      var u = activeCandidate.username;
+      if (!confirm("क्या आप वाकई प्रत्याशी '" + activeCandidate.candidate_name + " (" + u + ")' को हटाना चाहते हैं?")) return;
+
+      showToast("⏳ हटाया जा रहा है...", "success");
+      function onDelSuccess(res) {
+        if (res && res.success) {
+          showToast("✅ " + res.message, "success");
+          candidates = candidates.filter(function(x) { return x.username !== u; });
+          if (candidates.length > 0) selectCandidate(candidates[0].username);
+          else createNewCandidate();
+        } else {
+          showToast("⚠️ त्रुटि: " + (res.error || "हट नहीं सका"), "error");
+        }
+      }
+
+      if (typeof google !== "undefined" && google.script && google.script.run) {
+        google.script.run.withSuccessHandler(onDelSuccess).apiDeleteCandidate(u);
+      } else {
+        fetch(window.location.href, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "deleteCandidate", username: u })
+        })
+        .then(function(r) { return r.json(); })
+        .then(onDelSuccess);
+      }
+    }
+
+    function refreshCandidatesList() {
+      showToast("🔄 गूगल शीट से प्रत्याशी लोड हो रहे हैं...", "success");
+      function onListSuccess(res) {
+        if (res && res.candidates) {
+          candidates = res.candidates;
+          renderCandidatesList();
+          showToast("✅ सूची रीफ्रेश हो गई (" + candidates.length + " प्रत्याशी)", "success");
+        }
+      }
+      if (typeof google !== "undefined" && google.script && google.script.run) {
+        google.script.run.withSuccessHandler(onListSuccess).apiGetCandidates();
+      } else {
+        fetch(window.location.href + (window.location.href.indexOf("?") === -1 ? "?" : "&") + "action=getCandidates")
+          .then(function(r) { return r.json(); })
+          .then(onListSuccess);
+      }
+    }
+
+    function exportPortalJson() {
+      function onJsonSuccess(res) {
+        var data = res.portal_users || res;
+        var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "portal_users.json";
+        a.click();
+        showToast("✅ portal_users.json डाउनलोड हो गया!", "success");
+      }
+      if (typeof google !== "undefined" && google.script && google.script.run) {
+        google.script.run.withSuccessHandler(onJsonSuccess).apiGetPortalJson();
+      } else {
+        fetch(window.location.href + (window.location.href.indexOf("?") === -1 ? "?" : "&") + "action=getPortalJson")
+          .then(function(r) { return r.json(); })
+          .then(onJsonSuccess);
+      }
+    }
+
+    function copyPortalJson() {
+      function onJsonSuccess(res) {
+        var data = res.portal_users || res;
+        var str = JSON.stringify(data, null, 2);
+        navigator.clipboard.writeText(str).then(function() {
+          showToast("📋 portal_users.json क्लिपबोर्ड में कॉपी हो गया!", "success");
+        });
+      }
+      if (typeof google !== "undefined" && google.script && google.script.run) {
+        google.script.run.withSuccessHandler(onJsonSuccess).apiGetPortalJson();
+      } else {
+        fetch(window.location.href + (window.location.href.indexOf("?") === -1 ? "?" : "&") + "action=getPortalJson")
+          .then(function(r) { return r.json(); })
+          .then(onJsonSuccess);
+      }
+    }
+
+    function showToast(msg, type) {
+      var t = document.getElementById("toastBox");
+      t.textContent = msg;
+      t.className = "toast " + (type || "success");
+      t.style.display = "block";
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(function() { t.style.display = "none"; }, 4000);
+    }
+  </script>
+</body>
+</html>

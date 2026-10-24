@@ -3024,7 +3024,9 @@ function enforceGatekeeperState() {
   }
 
   if (isSuperAdmin) {
-    allowedTabs = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'directoryTab', 'adminControlTab', 'settingsTab'];
+    allowedTabs = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'withPicSlipTab', 'directoryTab', 'candidateProfileTab', 'adminControlTab', 'settingsTab'];
+    const photoToggle = document.getElementById('superAdminAllowPhotoToggle');
+    if (photoToggle) photoToggle.style.display = 'inline-flex';
   } else if (Array.isArray(userConfiguredTabs)) {
     // If Admin explicitly assigned custom tabs to this user (even if empty []), ALWAYS RESPECT IT!
     allowedTabs = userConfiguredTabs;
@@ -7207,6 +7209,22 @@ function buildExactOfficialSlipInnerHtml(voter) {
   const boothName = (bInfo && (bInfo.name || bInfo.name_hi)) || voter.polling_station_name || 'राजकीय उच्च माध्यमिक विद्यालय';
   const boothNo = (bInfo && bInfo.booth_no) || voter.polling_station_no || '1';
 
+  // Super Admin Voter Photo Power
+  const showVoterPhoto = !!(State.allowVoterPhotoOnNormalSlips);
+  let voterPhotoHtml = '';
+  if (showVoterPhoto) {
+    const photoUrl = (typeof getWithPicSlipCutUrl === 'function') ? getWithPicSlipCutUrl(voter) : (voter.photo_url || '');
+    const rawWard = String(voter.ward_no || '1').replace(/\D/g, '');
+    const wNum = String(parseInt(rawWard, 10) || 1).padStart(2, '0');
+    const serialNo = String(voter.serial_no || '1');
+    const pEn = voter.panchayat_en || (voter.gram_panchayat && typeof getPanchayatEnglishName === 'function' ? getPanchayatEnglishName(voter.gram_panchayat) : 'Badgaon');
+    voterPhotoHtml = `
+      <div class="mini-voter-photo-box" style="width:72px; height:88px; border:1px solid #1e293b; padding:1px; background:#fff; flex-shrink:0; text-align:center; box-sizing:border-box; margin-left:8px;">
+        <img src="${photoUrl}" alt="Photo" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; if(typeof onWithPicImgError === 'function') onWithPicImgError(this, '${pEn}', '${wNum}', '${serialNo}');" />
+      </div>
+    `;
+  }
+
   return `
     <div class="official-mini-slip">
       <div class="mini-slip-inner">
@@ -7223,28 +7241,31 @@ function buildExactOfficialSlipInnerHtml(voter) {
           <span class="mini-serial-box">क्र. ${voter.serial_no || '1'}</span>
         </div>
 
-        <!-- Details -->
-        <div class="mini-details-table">
-          <div class="mini-detail-row">
-            <span class="mini-lbl">नाम:</span>
-            <span class="mini-val"><strong>${voter.voter_name}</strong> ${voter.voter_name_en ? `(${voter.voter_name_en})` : ''}</span>
+        <!-- Details & Optional Photo Row -->
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div class="mini-details-table" style="flex:1;">
+            <div class="mini-detail-row">
+              <span class="mini-lbl">नाम:</span>
+              <span class="mini-val"><strong>${voter.voter_name}</strong> ${voter.voter_name_en ? `(${voter.voter_name_en})` : ''}</span>
+            </div>
+            <div class="mini-detail-row">
+              <span class="mini-lbl">${relLabel}:</span>
+              <span class="mini-val">${voter.relative_name || '-'}</span>
+            </div>
+            <div class="mini-detail-row">
+              <span class="mini-lbl">आयु/लिंग:</span>
+              <span class="mini-val">${voter.age ? voter.age + ' वर्ष' : '-'}, ${isFemale ? 'स्त्री' : 'पुरुष'}</span>
+            </div>
+            <div class="mini-detail-row">
+              <span class="mini-lbl">मकान:</span>
+              <span class="mini-val">${voter.house_no || '-'} (${voter.revenue_village || voter.gram_panchayat})</span>
+            </div>
+            <div class="mini-detail-row">
+              <span class="mini-lbl">पहचान क्र.:</span>
+              <span class="mini-val"><strong>${voter.epic_no || 'RJ/12/098/...'}</strong></span>
+            </div>
           </div>
-          <div class="mini-detail-row">
-            <span class="mini-lbl">${relLabel}:</span>
-            <span class="mini-val">${voter.relative_name || '-'}</span>
-          </div>
-          <div class="mini-detail-row">
-            <span class="mini-lbl">आयु/लिंग:</span>
-            <span class="mini-val">${voter.age ? voter.age + ' वर्ष' : '-'}, ${isFemale ? 'स्त्री' : 'पुरुष'}</span>
-          </div>
-          <div class="mini-detail-row">
-            <span class="mini-lbl">मकान:</span>
-            <span class="mini-val">${voter.house_no || '-'} (${voter.revenue_village || voter.gram_panchayat})</span>
-          </div>
-          <div class="mini-detail-row">
-            <span class="mini-lbl">पहचान क्र.:</span>
-            <span class="mini-val"><strong>${voter.epic_no || 'RJ/12/098/...'}</strong></span>
-          </div>
+          ${voterPhotoHtml}
         </div>
 
         <!-- Polling Station Box -->
@@ -10596,25 +10617,30 @@ function onWithPicImgError(img, folder, wNum, serialNo) {
 function buildWithPicSlipHtml(voter, layout, index) {
   // 1. Candidate Data Resolution (Per-Candidate Dynamic Logic)
   let cand = null;
+  const isCandidateUserLoggedIn = State.currentUser && (State.currentUser.role === 'CANDIDATE' || State.currentUser.candidate);
+  const isSuperAdminOrPrivileged = State.currentUser && (State.currentUser.role === 'SUPER_ADMIN' || State.currentUser.role === 'MASTER_ADMIN' || State.currentUser.role === 'ADMIN' || State.currentUser.role === 'INCHARGE' || State.currentUser.role === 'VYAVASTHAPAK');
 
   // A. Priority 1: Logged-in user is a Candidate -> ALWAYS bind to their own profile first!
-  if (State.currentUser && (State.currentUser.role === 'CANDIDATE' || State.currentUser.candidate)) {
+  if (isCandidateUserLoggedIn) {
     cand = State.currentUser.candidate || State.currentUser;
-  }
-
-  // B. Priority 2: Super Admin / Operator explicitly selected candidate via dropdown
-  if (!cand && State.selectedWithPicCandidateId && State.selectedWithPicCandidateId !== 'AUTO') {
-    cand = getCandidateByIdOrUsername(State.selectedWithPicCandidateId);
-  }
-
-  // C. Priority 3: Automatic resolution matching voter's Gram Panchayat & Ward from Google Sheet
-  if (!cand) {
-    cand = findCandidateForVoter(voter);
-  }
-
-  // D. Priority 4: Cached candidate profile for current session
-  if (!cand && State.currentCandidate) {
-    cand = State.currentCandidate;
+  } else if (isSuperAdminOrPrivileged) {
+    // B. Super Admin: By default NO candidate details unless explicitly selected from dropdown!
+    const selId = State.selectedWithPicCandidateId;
+    if (!selId || selId === 'NONE') {
+      cand = null;
+    } else if (selId === 'AUTO') {
+      cand = findCandidateForVoter(voter);
+    } else {
+      cand = getCandidateByIdOrUsername(selId);
+    }
+  } else {
+    // Other users / operators
+    const selId = State.selectedWithPicCandidateId;
+    if (selId && selId !== 'NONE' && selId !== 'AUTO') {
+      cand = getCandidateByIdOrUsername(selId);
+    } else if (selId !== 'NONE') {
+      cand = findCandidateForVoter(voter);
+    }
   }
 
   // Check if resolved candidate is Kamala Devi (बांदनवाड़ा - पं.स. सदस्य)
@@ -10738,7 +10764,7 @@ function buildWithPicSlipHtml(voter, layout, index) {
   }
   const symbolDisplayName = symbolName.split(' ')[0];
 
-  const showBanner = (State.withPicShowCandidateBanner !== false);
+  const showBanner = (cand !== null) && (State.withPicShowCandidateBanner !== false);
 
   if (layout === 'thermal') {
     return `
@@ -10960,13 +10986,13 @@ function getAppsScriptUrl() {
   return (State.config && State.config.appsScriptUrl) ||
     localStorage.getItem('panchayat_apps_script_url') ||
     (window.PORTAL_SETTINGS_DATA && window.PORTAL_SETTINGS_DATA.google_sheet_sync && window.PORTAL_SETTINGS_DATA.google_sheet_sync.apps_script_url) ||
-    'https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec';
+    'https://script.google.com/macros/s/AKfycbyweGsi0hYfFaSMWT-M2UOPyGBU2XD0b4ClxcK9P5DDPvql3q8jJR7DjdW352dxFa3i6A/exec';
 }
 
 function openCandidateSettingsWebApp() {
   const url = getAppsScriptUrl();
   const sep = url.includes('?') ? '&' : '?';
-  window.open(url + sep + 'page=candidate_settings', '_blank');
+  window.open(url + sep + 'action=html', '_blank');
 }
 
 function toggleCandidateSettingsIframe() {
@@ -10977,8 +11003,8 @@ function toggleCandidateSettingsIframe() {
   if (container.style.display === 'none' || !container.style.display) {
     const url = getAppsScriptUrl();
     const sep = url.includes('?') ? '&' : '?';
-    if (!iframe.src || iframe.src === 'about:blank' || iframe.src.indexOf('candidate_settings') === -1) {
-      iframe.src = url + sep + 'page=candidate_settings';
+    if (!iframe.src || iframe.src === 'about:blank' || iframe.src.indexOf('action=html') === -1) {
+      iframe.src = url + sep + 'action=html';
     }
     container.style.display = 'block';
     container.scrollIntoView({ behavior: 'smooth' });
@@ -11067,7 +11093,8 @@ async function syncCandidatesLiveFromSheet() {
 
         populateAllCandidateSelectors();
         showToast(`✅ गूगल शीट से ${data.candidates.length} प्रत्याशी सफलतापूर्वक सिंक हो गए!`);
-        if (typeof renderWithPicSlips === 'function') renderWithPicSlips();
+        if (typeof updateWithPicGenerator === 'function') updateWithPicGenerator();
+        if (typeof renderWithPicPreview === 'function') renderWithPicPreview();
         if (typeof renderLiveSpecimenSlip === 'function') renderLiveSpecimenSlip();
         return;
       }
@@ -11129,7 +11156,6 @@ function populateAllCandidateSelectors() {
     cands.forEach(c => {
       const opt = document.createElement('option');
       opt.value = c.username;
-      const isKam = (c.username === 'kamla' || c.username === 'kamala');
       opt.textContent = `${c.candidate_name || c.full_name || c.username} (${c.post || 'प्रत्याशी'} - ${c.panchayat || 'ALL'})`;
       profSelect.appendChild(opt);
     });
@@ -11140,15 +11166,19 @@ function populateAllCandidateSelectors() {
   // 2. Populate With-Pic Tab Candidate Selector dropdown
   const withPicSelect = document.getElementById('withPicCandidateSelect');
   if (withPicSelect) {
-    const curVal = withPicSelect.value;
-    withPicSelect.innerHTML = '<option value="AUTO">-- ग्राम पंचायत अनुसार (Auto) --</option>';
+    const curVal = withPicSelect.value || State.selectedWithPicCandidateId || 'NONE';
+    withPicSelect.innerHTML = '<option value="NONE">-- कोई प्रत्याशी नहीं (केवल मतदाता पर्ची) --</option><option value="AUTO">-- ग्राम पंचायत अनुसार प्रत्याशी (Auto) --</option>';
     cands.forEach(c => {
       const opt = document.createElement('option');
       opt.value = c.username;
       opt.textContent = `${c.candidate_name || c.full_name || c.username} (${c.post || 'प्रत्याशी'} - ${c.panchayat || 'ALL'})`;
       withPicSelect.appendChild(opt);
     });
-    if (curVal) withPicSelect.value = curVal;
+    if (curVal && (curVal === 'NONE' || curVal === 'AUTO' || seen.has(curVal))) {
+      withPicSelect.value = curVal;
+    } else {
+      withPicSelect.value = 'NONE';
+    }
   }
 }
 
@@ -11193,8 +11223,14 @@ function onSelectCandidateProfile(uName) {
 
   const symSelect = document.getElementById('candidateSymbolSelect');
   if (symSelect && c.symbol_name) {
-    symSelect.value = c.symbol_name;
-    if (typeof onCandidateSymbolChanged === 'function') onCandidateSymbolChanged(c.symbol_name);
+    for (let i = 0; i < symSelect.options.length; i++) {
+      const opt = symSelect.options[i];
+      if (opt.value === c.symbol_name || opt.textContent.includes(c.symbol_name) || (c.symbol_name === 'हाथ' && opt.value === 'hand')) {
+        symSelect.selectedIndex = i;
+        break;
+      }
+    }
+    if (typeof onCandidateSymbolChanged === 'function') onCandidateSymbolChanged(symSelect.value);
   }
 
   renderLiveSpecimenSlip();
@@ -11202,14 +11238,70 @@ function onSelectCandidateProfile(uName) {
 
 function onWithPicCandidateChanged(uName) {
   State.selectedWithPicCandidateId = uName;
+  const bannerCheck = document.getElementById('withPicShowBannerCheck');
+  if (uName === 'NONE') {
+    State.withPicShowCandidateBanner = false;
+    if (bannerCheck) bannerCheck.checked = false;
+  } else {
+    State.withPicShowCandidateBanner = true;
+    if (bannerCheck) bannerCheck.checked = true;
+    const c = getCandidateByIdOrUsername(uName);
+    if (c) State.currentCandidate = c;
+  }
+
+  const profSelect = document.getElementById('candidateProfileSelector');
+  if (profSelect && uName !== 'NONE' && uName !== 'AUTO') {
+    profSelect.value = uName;
+    onSelectCandidateProfile(uName);
+  }
+
   if (typeof updateWithPicGenerator === 'function') {
     updateWithPicGenerator();
+  }
+  if (typeof renderWithPicPreview === 'function') {
+    renderWithPicPreview();
+  }
+}
+
+// Super Admin Voter Photo Power on Normal / Bulk Slips
+function toggleNormalSlipVoterPhoto(enabled) {
+  State.allowVoterPhotoOnNormalSlips = !!enabled;
+  try {
+    localStorage.setItem('portal_allow_voter_photo_normal', enabled ? 'true' : 'false');
+  } catch(_) {}
+
+  const checkEl = document.getElementById('normalSlipVoterPhotoCheck');
+  if (checkEl) checkEl.checked = !!enabled;
+
+  showToast(enabled ? '📷 सामान्य पर्चियों में मतदाता फोटो सक्रिय की गई' : '⚫ सामान्य पर्चियां मूल B&W मोड में सेट की गई');
+
+  if (typeof updateBulkGenerator === 'function') updateBulkGenerator();
+  if (State.currentSlipVoter && typeof renderModalCandidateSlip === 'function') {
+    renderModalCandidateSlip(State.currentSlipVoter);
   }
 }
 
 // Hook into DOMContentLoaded or window load to initialize candidate selectors
 window.addEventListener('load', () => {
   setTimeout(() => {
+    // Restore voter photo toggle if saved
+    try {
+      const savedPhotoPref = localStorage.getItem('portal_allow_voter_photo_normal');
+      if (savedPhotoPref === 'true') {
+        State.allowVoterPhotoOnNormalSlips = true;
+        const c = document.getElementById('normalSlipVoterPhotoCheck');
+        if (c) c.checked = true;
+      }
+    } catch(_) {}
+
     populateAllCandidateSelectors();
+
+    // Auto-load embedded Apps Script Iframe in Candidate Profile Tab
+    const iframe = document.getElementById('candidateSettingsIframe');
+    if (iframe && (!iframe.src || iframe.src === 'about:blank' || iframe.src === window.location.href)) {
+      const url = getAppsScriptUrl();
+      const sep = url.includes('?') ? '&' : '?';
+      iframe.src = url + sep + 'action=html';
+    }
   }, 500);
 });
