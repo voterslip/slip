@@ -470,7 +470,7 @@ function doGet(e) {
   var callback = params.callback;
 
   // JSON API कॉल्स की सूची
-  var jsonActions = ["ping", "init", "setup", "setupAllSheets", "getSettings", "saveSettings", "updateSetting", "getUsers", "getCandidates", "getPortalJson", "getFullJson", "syncJson", "login", "saveCandidate", "deleteCandidate"];
+  var jsonActions = ["ping", "init", "setup", "setupAllSheets", "getSettings", "saveSettings", "updateSetting", "getUsers", "getCandidates", "getPortalJson", "getFullJson", "syncJson", "login", "saveCandidate", "deleteCandidate", "updatePassword", "changePassword"];
 
   // 1. यदि कोई JSON एक्शन नहीं है अथवा वेब पेज मांगा गया है, तो सीधे सम्पूर्ण प्रत्याशी प्रबंधन वेब ऐप HTML आउटपुट दें!
   if (!action || !jsonActions.includes(action) || action === "candidateSettings" || action === "candidate_settings" || action === "html" || action === "admin") {
@@ -560,6 +560,11 @@ function doGet(e) {
         res = handleDeleteCandidate(params.username || params.user_id);
         break;
 
+      case "updatePassword":
+      case "changePassword":
+        res = handleUpdatePassword(params.username || params.user_id, params.newPassword || params.password);
+        break;
+
       default:
         res = { success: false, error: "अमान्य action: " + action };
     }
@@ -594,6 +599,8 @@ function doPost(e) {
       res = handleSaveSettings(payload.settings || payload);
     } else if (action === "saveCandidate" || action === "saveCandidateSelfEdit") {
       res = handleSaveCandidate(payload.candidateData || payload.candidate || payload);
+    } else if (action === "updatePassword" || action === "changePassword") {
+      res = handleUpdatePassword(payload.username || payload.user_id, payload.newPassword || payload.password);
     } else if (action === "deleteCandidate") {
       res = handleDeleteCandidate(payload.username || payload.user_id);
     } else if (action === "syncPortalJson") {
@@ -1011,7 +1018,6 @@ function handleSaveCandidate(cand) {
 
   var fieldMap = {
     "Candidate_Name": cand.candidate_name || cand.full_name || cand.fullName,
-    "Password": cand.password || "bhinai2026",
     "Post": cand.post,
     "Print_Ward_No": cand.print_ward_no || cand.ward,
     "Allowed_Panchayats": cand.allowed_panchayats || cand.panchayat,
@@ -1033,6 +1039,12 @@ function handleSaveCandidate(cand) {
     "Can_With_Pic_Slips": true,
     "Can_Candidate_Profile": true
   };
+
+  if (cand.password) {
+    fieldMap["Password"] = cand.password;
+  } else if (targetRow > data.length) {
+    fieldMap["Password"] = "bhinai2026";
+  }
 
   for (var key in fieldMap) {
     var cIdx = headers.indexOf(key);
@@ -1095,6 +1107,31 @@ function handleDeleteCandidate(username) {
   SpreadsheetApp.flush();
 
   return { success: true, message: "प्रत्याशी '" + username + "' सफलतापूर्वक हटा दिया गया!" };
+}
+
+/**
+ * यूजर/प्रत्याशी का पासवर्ड गूगल शीट में सीधे अपडेट करना
+ */
+function handleUpdatePassword(username, newPassword) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_USERS);
+  if (!sheet) return { success: false, error: "Users शीट नहीं मिली!" };
+
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var uCol = headers.indexOf("Username");
+  var pCol = headers.indexOf("Password");
+  if (uCol === -1 || pCol === -1) return { success: false, error: "Username या Password कॉलम नहीं मिला!" };
+
+  var uName = String(username || "").trim().toLowerCase();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][uCol]).trim().toLowerCase() === uName) {
+      sheet.getRange(i + 1, pCol + 1).setValue(newPassword);
+      SpreadsheetApp.flush();
+      return { success: true, message: "पासवर्ड गूगल शीट में सफलतापूर्वक अपडेट हो गया!" };
+    }
+  }
+
+  return { success: false, error: "यूजर '" + username + "' Users शीट में नहीं मिला!" };
 }
 
 // Google Script Run API Wrappers (वेब ऐप फ्रंटएंड से सीधे कॉल हेतु)

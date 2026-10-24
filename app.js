@@ -963,6 +963,16 @@ async function quickUpdatePassword(userId, newPass) {
       body: JSON.stringify({ username: userId, newPassword: trimmed })
     });
   } catch(e) {}
+
+  try {
+    if (typeof postToAppsScript === 'function') {
+      postToAppsScript({
+        action: 'updatePassword',
+        username: userId,
+        newPassword: trimmed
+      });
+    }
+  } catch(e) {}
   
   showToast(`🔑 पासवर्ड सुरक्षित: ${userId} -> '${trimmed}'`);
 }
@@ -2505,14 +2515,14 @@ const State = {
   withPicHouse: '',
   withPicPage: 1,
   withPicThermalBatch: 18,   // 15, 18, 21, or 'ALL'
-  withPicShowCandidateBanner: true,
+  withPicShowCandidateBanner: false, // Default: NO candidate banner until chosen
+  selectedWithPicCandidateId: 'NONE', // Default: NO candidate selected
   withPicFilteredVoters: [],
 
-  
   config: {
     adminSheetUrl: '',
     voterSheetUrl: '',
-    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbyweGsi0hYfFaSMWT-M2UOPyGBU2XD0b4ClxcK9P5DDPvql3q8jJR7DjdW352dxFa3i6A/exec'
+    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbwHyIpZL75c5mx1HliY9GrsRsVnqYN5USq5acfX-93yWvbi7CP4P0lk3a0-ORMLzdM5VA/exec'
   }
 };
 
@@ -3267,11 +3277,14 @@ function enforceGatekeeperState() {
     const withPicCheck = document.getElementById('withPicShowBannerCheck');
     if (withPicCheck) withPicCheck.checked = true;
     State.withPicShowCandidateBanner = true;
-  } else if (!State.currentCandidate) {
-    const cached = localStorage.getItem('candidate_profile_' + (u.id || u.username));
-    if (cached) {
-      try { State.currentCandidate = JSON.parse(cached); } catch(e) {}
-    }
+  } else {
+    // Non-Candidate (Super Admin / BLO / Operator): strictly default to NO candidate on slips!
+    State.selectedWithPicCandidateId = 'NONE';
+    State.withPicShowCandidateBanner = false;
+    const withPicCheck = document.getElementById('withPicShowBannerCheck');
+    if (withPicCheck) withPicCheck.checked = false;
+    const withPicSelect = document.getElementById('withPicCandidateSelect');
+    if (withPicSelect) withPicSelect.value = 'NONE';
   }
 
   // Incharge edit protection: All candidate and personnel edit buttons hidden
@@ -6517,6 +6530,9 @@ async function initCandidateProfileTab() {
     if (electionDateInput) electionDateInput.value = cand.election_date || getGlobalElectionDate();
     if (electionTimeInput) electionTimeInput.value = cand.election_time || getGlobalElectionTime();
     if (sloganText) sloganText.value = cand.slogan || '';
+
+    const tabPassInp = document.getElementById('candidateTabPasswordInput');
+    if (tabPassInp) tabPassInp.value = cand.password || u.password || '';
     
     // Photo restore
     if (photoPreview && !cand.photo_url && (u.username === 'b' || (cand.candidate_name && cand.candidate_name.includes('कमला')))) { cand.photo_url = KAMLA_DEFAULT_PHOTO; }
@@ -6988,36 +7004,59 @@ async function handleSaveCandidateProfile(event) {
     showToast('✅ प्रत्याशी प्रोफाइल सुरक्षित!');
   }
 
-  // Live Auto-Sync to Google Sheet (Users & Candidate_Edits Sheet Tab)
+  // Live Auto-Sync to Google Sheet (Users Sheet Tab)
   try {
-    const gScriptUrl = (typeof getAppsScriptUrl === 'function') ? getAppsScriptUrl() : 'https://script.google.com/macros/s/AKfycbyweGsi0hYfFaSMWT-M2UOPyGBU2XD0b4ClxcK9P5DDPvql3q8jJR7DjdW352dxFa3i6A/exec';
-    if (gScriptUrl) {
-      fetch(gScriptUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          action: 'saveCandidate',
-          username: targetUsername,
-          candidate: profileData,
-          candidate_name: name,
-          full_name: name,
-          panchayat: gp,
-          ward: ward,
-          post: post,
-          mobile: mobile,
-          symbol_name: symbolName,
-          photo_url: photoUrl,
-          slogan: slogan,
-          election_date: electionDate,
-          election_time: electionTime
-        })
-      }).then(r => r.json()).then(d => {
-        if (d && d.success) {
-          if (typeof showToast === 'function') showToast('☁️ गूगल शीट में प्रत्याशी विवरण सुरक्षित!');
-        }
-      }).catch(err => console.warn('Google Sheet background candidate sync error:', err));
+    const payload = {
+      action: 'saveCandidate',
+      username: targetUsername,
+      user_id: targetUsername,
+      candidate: profileData,
+      candidate_name: name,
+      full_name: name,
+      panchayat: gp,
+      ward: ward,
+      print_ward_no: ward,
+      post: post,
+      mobile: mobile,
+      symbol_name: symbolName,
+      custom_symbol_url: customSymbolUrl,
+      photo_url: photoUrl,
+      slogan: slogan,
+      election_date: electionDate,
+      election_time: electionTime
+    };
+
+    const tabPassInp = document.getElementById('candidateTabPasswordInput');
+    if (tabPassInp && tabPassInp.value.trim()) {
+      payload.password = tabPassInp.value.trim();
+      u.password = tabPassInp.value.trim();
+      try {
+        localStorage.setItem('panchayat_user_session', JSON.stringify(u));
+        sessionStorage.setItem('panchayat_user_session', JSON.stringify(u));
+      } catch(_) {}
     }
-  } catch(e) {}
+
+    if (typeof postToAppsScript === 'function') {
+      const syncRes = await postToAppsScript(payload);
+      if (syncRes && syncRes.success) {
+        if (typeof showToast === 'function') {
+          showToast('☁️ गूगल शीट में प्रत्याशी विवरण व फोटो लाइव सुरक्षित हो गया!', 'success');
+        }
+      }
+    }
+
+    // Update in-memory candidate list so With-Pic tab dropdown & generator get the new details immediately
+    if (Array.isArray(State.candidates)) {
+      const cIdx = State.candidates.findIndex(x => (x.username === targetUsername || x.id === targetUsername));
+      if (cIdx >= 0) State.candidates[cIdx] = profileData;
+      else State.candidates.push(profileData);
+    }
+    if (typeof populateAllCandidateSelectors === 'function') populateAllCandidateSelectors();
+    if (typeof updateWithPicGenerator === 'function') updateWithPicGenerator();
+    if (typeof renderWithPicPreview === 'function') renderWithPicPreview();
+  } catch(e) {
+    console.warn('Google Sheet background candidate sync error:', e);
+  }
 
   renderLiveSpecimenSlip();
 }
@@ -10719,29 +10758,19 @@ function buildWithPicSlipHtml(voter, layout, index) {
   // 1. Candidate Data Resolution (Per-Candidate Dynamic Logic)
   let cand = null;
   const isCandidateUserLoggedIn = State.currentUser && (State.currentUser.role === 'CANDIDATE' || State.currentUser.candidate);
-  const isSuperAdminOrPrivileged = State.currentUser && (State.currentUser.role === 'SUPER_ADMIN' || State.currentUser.role === 'MASTER_ADMIN' || State.currentUser.role === 'ADMIN' || State.currentUser.role === 'INCHARGE' || State.currentUser.role === 'VYAVASTHAPAK');
+  const bannerCheck = document.getElementById('withPicShowBannerCheck');
+  const isBannerChecked = bannerCheck ? bannerCheck.checked : (State.withPicShowCandidateBanner === true);
+  const selId = State.selectedWithPicCandidateId || 'NONE';
 
-  // A. Priority 1: Logged-in user is a Candidate -> ALWAYS bind to their own profile first!
-  if (isCandidateUserLoggedIn) {
+  // Strict check: if NONE or checkbox unchecked or banner disabled, strictly NO CANDIDATE!
+  if (selId === 'NONE' || !isBannerChecked || State.withPicShowCandidateBanner !== true) {
+    cand = null;
+  } else if (selId === 'AUTO') {
+    cand = findCandidateForVoter(voter);
+  } else if (selId && selId !== 'NONE') {
+    cand = getCandidateByIdOrUsername(selId);
+  } else if (isCandidateUserLoggedIn) {
     cand = State.currentUser.candidate || State.currentUser;
-  } else if (isSuperAdminOrPrivileged) {
-    // B. Super Admin: By default NO candidate details unless explicitly selected from dropdown!
-    const selId = State.selectedWithPicCandidateId;
-    if (!selId || selId === 'NONE') {
-      cand = null;
-    } else if (selId === 'AUTO') {
-      cand = findCandidateForVoter(voter);
-    } else {
-      cand = getCandidateByIdOrUsername(selId);
-    }
-  } else {
-    // Other users / operators
-    const selId = State.selectedWithPicCandidateId;
-    if (selId && selId !== 'NONE' && selId !== 'AUTO') {
-      cand = getCandidateByIdOrUsername(selId);
-    } else if (selId !== 'NONE') {
-      cand = findCandidateForVoter(voter);
-    }
   }
 
   // Check if resolved candidate is Kamala Devi (बांदनवाड़ा - पं.स. सदस्य)
@@ -10865,7 +10894,7 @@ function buildWithPicSlipHtml(voter, layout, index) {
   }
   const symbolDisplayName = symbolName.split(' ')[0];
 
-  const showBanner = (cand !== null) && (State.withPicShowCandidateBanner !== false);
+  const showBanner = (cand !== null) && (selId !== 'NONE') && (State.withPicShowCandidateBanner === true) && (isBannerChecked === true);
 
   if (layout === 'thermal') {
     return `
@@ -11087,7 +11116,92 @@ function getAppsScriptUrl() {
   return (State.config && State.config.appsScriptUrl) ||
     localStorage.getItem('panchayat_apps_script_url') ||
     (window.PORTAL_SETTINGS_DATA && window.PORTAL_SETTINGS_DATA.google_sheet_sync && window.PORTAL_SETTINGS_DATA.google_sheet_sync.apps_script_url) ||
-    'https://script.google.com/macros/s/AKfycbyweGsi0hYfFaSMWT-M2UOPyGBU2XD0b4ClxcK9P5DDPvql3q8jJR7DjdW352dxFa3i6A/exec';
+    'https://script.google.com/macros/s/AKfycbwHyIpZL75c5mx1HliY9GrsRsVnqYN5USq5acfX-93yWvbi7CP4P0lk3a0-ORMLzdM5VA/exec';
+}
+
+/**
+ * 🌐 Universal Google Apps Script Communicator (Real-Time Sheet Sync)
+ * Direct POST with plain/text to avoid CORS preflight, plus GET fallback
+ */
+async function postToAppsScript(payload) {
+  const url = getAppsScriptUrl();
+  if (!url) return { success: false, error: 'Apps Script URL not set' };
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+  } catch (err) {
+    console.warn('postToAppsScript POST attempt encountered error, trying GET fallback:', err);
+  }
+
+  // GET Fallback for CORS or redirect handling
+  try {
+    const qParams = new URLSearchParams({
+      action: payload.action || 'ping',
+      username: payload.username || payload.user_id || '',
+      password: payload.newPassword || payload.password || '',
+      newPassword: payload.newPassword || payload.password || '',
+      data: JSON.stringify(payload),
+      _t: Date.now()
+    });
+    const sep = url.includes('?') ? '&' : '?';
+    const getRes = await fetch(url + sep + qParams.toString());
+    if (getRes.ok) {
+      return await getRes.json();
+    }
+  } catch (e2) {
+    console.warn('postToAppsScript GET fallback failed:', e2);
+  }
+
+  return { success: false };
+}
+
+/**
+ * प्रत्याशी टैब से सीधा पासवर्ड बदलना एवं गूगल शीट में सुरक्षित करना
+ */
+async function saveCandidatePasswordFromTab() {
+  const u = State.currentUser;
+  if (!u) {
+    showToast('⚠️ पहले लॉगिन करें!');
+    return;
+  }
+  const passInp = document.getElementById('candidateTabPasswordInput');
+  const newPass = passInp ? passInp.value.trim() : '';
+  if (!newPass) {
+    showToast('⚠️ कृपया नया पासवर्ड दर्ज करें!');
+    return;
+  }
+
+  const uName = u.username || u.id;
+  showToast('⏳ पासवर्ड गूगल शीट में सुरक्षित किया जा रहा है...');
+
+  // 1. Update local session & cache
+  u.password = newPass;
+  try {
+    localStorage.setItem('panchayat_user_session', JSON.stringify(u));
+    sessionStorage.setItem('panchayat_user_session', JSON.stringify(u));
+  } catch(e) {}
+
+  // 2. Direct Sync to Google Sheet
+  const res = await postToAppsScript({
+    action: 'updatePassword',
+    username: uName,
+    newPassword: newPass,
+    adminUsername: uName
+  });
+
+  if (res && res.success) {
+    showToast(`✅ पासवर्ड सफलतापूर्वक बदल गया! गूगल शीट (Users) में सुरक्षित: '${newPass}'`, 'success');
+  } else {
+    showToast(`✅ पासवर्ड अपडेट हो गया! (लोकल सुरक्षित, शीट सिंक भेजा गया)`, 'info');
+  }
 }
 
 function openCandidateSettingsWebApp() {
