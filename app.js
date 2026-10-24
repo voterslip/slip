@@ -2512,7 +2512,7 @@ const State = {
   config: {
     adminSheetUrl: '',
     voterSheetUrl: '',
-    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbwOlvbmZzo8kJAFgi1TdgCA09WusBHanGhAk6K5GB63c5M1y6UIeTQQAAvW7NS27nlM8g/exec'
+    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbyweGsi0hYfFaSMWT-M2UOPyGBU2XD0b4ClxcK9P5DDPvql3q8jJR7DjdW352dxFa3i6A/exec'
   }
 };
 
@@ -2799,11 +2799,14 @@ function syncCurrentUserWithConfiguredUsers() {
     }
     if (Array.isArray(parsedTabs)) {
       const isCand = isCandidateUser(State.currentUser);
+      const isSuper = (typeof isSuperAdminUser === 'function') ? isSuperAdminUser(State.currentUser) : false;
       const isVoter = (typeof getPortalContext === 'function' && getPortalContext() === 'voter') || (window.PORTAL_TYPE === 'voter');
-      if (isCand || isVoter) {
+      if (!isSuper && (isCand || isVoter)) {
         parsedTabs = parsedTabs.filter(t => t !== 'directoryTab');
       }
-      State.currentUser.allowed_tabs = parsedTabs;
+      if (!isSuper) {
+        State.currentUser.allowed_tabs = parsedTabs;
+      }
     }
     if (matched.allowed_panchayats) {
       State.currentUser.allowed_panchayats = matched.allowed_panchayats;
@@ -2910,7 +2913,18 @@ function initSession() {
             State.currentUser = null;
           }
         } else if (ctx === 'voter') {
-          if (u.role !== 'SUPER_ADMIN' && u.id !== 'admin' && u.username !== 'admin') {
+          const isSuper = (u.role === 'SUPER_ADMIN' || u.role === 'ADMIN' || u.id === 'admin' || u.id === 'superadmin' || u.username === 'admin' || u.username === 'superadmin');
+          if (isSuper) {
+            u.role = 'SUPER_ADMIN';
+            u.allowed_tabs = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'withPicSlipTab', 'directoryTab', 'candidateProfileTab', 'adminControlTab', 'settingsTab'];
+            State.currentUser = u;
+          } else if (u.role === 'INCHARGE' || u.id === 'incharge' || u.username === 'incharge') {
+            State.currentUser = u;
+          } else if (u.role === 'VYAVASTHAPAK' || u.id === 'vyavasthapak' || u.username === 'vyavasthapak') {
+            State.currentUser = u;
+          } else if (u.role === 'BLOCK_PRABHARI' || u.id === 'block_prabhari' || u.username === 'block_prabhari') {
+            State.currentUser = u;
+          } else {
             // Guarantee full candidate tabs
             if (u.role === 'USER' || !u.role || u.candidate_mode === 'admin_locked' || u.role === 'PANCHAYAT_AGENT' || u.username === 'kk') {
               u.role = 'CANDIDATE';
@@ -2923,8 +2937,6 @@ function initSession() {
             }
             u.allowed_tabs = u.allowed_tabs.filter(t => t !== 'directoryTab');
             State.currentUser = u;
-          } else {
-            State.currentUser = null;
           }
         } else {
           // Master Portal (/pan/ or ?portal=master)
@@ -6924,10 +6936,15 @@ async function handleSaveCandidateProfile(event) {
     symbolName = symObj.name_hi;
   }
 
-  const uKey = u.id || u.username;
+  const isSuper = (typeof isSuperAdminUser === 'function') ? isSuperAdminUser(u) : (u.role === 'SUPER_ADMIN' || u.id === 'admin' || u.username === 'admin');
+  const selectedCand = document.getElementById('candidateProfileSelector')?.value;
+  const targetUsername = (isSuper && selectedCand) ? selectedCand : (u.username || u.id);
+  const uKey = targetUsername;
   const profileData = {
     user_id: uKey,
+    username: targetUsername,
     candidate_name: name,
+    full_name: name,
     mobile: mobile,
     post: post,
     panchayat: gp,
@@ -6971,21 +6988,36 @@ async function handleSaveCandidateProfile(event) {
     showToast('✅ प्रत्याशी प्रोफाइल सुरक्षित!');
   }
 
-  // Live Auto-Sync to Google Sheet (Candidate_Edits Sheet Tab)
+  // Live Auto-Sync to Google Sheet (Users & Candidate_Edits Sheet Tab)
   try {
-    const gScriptUrl = State.config?.appsScriptUrl || localStorage.getItem('panchayat_apps_script_url') || 'https://script.google.com/macros/s/AKfycbwOlvbmZzo8kJAFgi1TdgCA09WusBHanGhAk6K5GB63c5M1y6UIeTQQAAvW7NS27nlM8g/exec';
+    const gScriptUrl = (typeof getAppsScriptUrl === 'function') ? getAppsScriptUrl() : 'https://script.google.com/macros/s/AKfycbyweGsi0hYfFaSMWT-M2UOPyGBU2XD0b4ClxcK9P5DDPvql3q8jJR7DjdW352dxFa3i6A/exec';
     if (gScriptUrl) {
       fetch(gScriptUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
-          action: 'saveCandidateSelfEdit',
-          candidateData: profileData
-        }),
-        mode: 'no-cors'
-      }).catch(err => console.warn('Candidate Sheet self-edit sync notice:', err));
+          action: 'saveCandidate',
+          username: targetUsername,
+          candidate: profileData,
+          candidate_name: name,
+          full_name: name,
+          panchayat: gp,
+          ward: ward,
+          post: post,
+          mobile: mobile,
+          symbol_name: symbolName,
+          photo_url: photoUrl,
+          slogan: slogan,
+          election_date: electionDate,
+          election_time: electionTime
+        })
+      }).then(r => r.json()).then(d => {
+        if (d && d.success) {
+          if (typeof showToast === 'function') showToast('☁️ गूगल शीट में प्रत्याशी विवरण सुरक्षित!');
+        }
+      }).catch(err => console.warn('Google Sheet background candidate sync error:', err));
     }
-  } catch (sheetErr) {}
+  } catch(e) {}
 
   renderLiveSpecimenSlip();
 }
