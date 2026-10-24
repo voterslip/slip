@@ -829,7 +829,16 @@
                 <input type="checkbox" id="withPicShowBannerCheck" checked onchange="toggleWithPicCandidateBanner(this.checked)">
                 <span>उम्मीदवार प्रचार हेडर शामिल रखें</span>
               </label>
-              <button type="button" class="btn btn-xs btn-outline" onclick="switchTab('candidateProfileTab')" title="प्रत्याशी विवरण बदलें">✏️ प्रत्याशी विवरण</button>
+
+              <!-- Dynamic Candidate Selector for With-Pic Slips -->
+              <div style="display:inline-flex; align-items:center; gap:6px; margin-left:8px; background:#eff6ff; padding:3px 8px; border-radius:6px; border:1px solid #bfdbfe;">
+                <span class="text-sm font-bold" style="color:#1d4ed8;">👤 प्रत्याशी:</span>
+                <select id="withPicCandidateSelect" class="form-select form-select-sm" onchange="onWithPicCandidateChanged(this.value)" style="font-weight:700; width:auto; border-color:#3b82f6; max-width:260px; height:28px; font-size:0.75rem; background:#fff;">
+                  <option value="AUTO">-- ग्राम पंचायत अनुसार (Auto) --</option>
+                </select>
+              </div>
+
+              <button type="button" class="btn btn-xs btn-outline" onclick="switchTab('candidateProfileTab')" title="प्रत्याशी विवरण बदलें">✏️ प्रत्याशी सेटिंग्स</button>
             </div>
 
             <!-- Statistics Summary -->
@@ -1118,17 +1127,109 @@
             <!-- ==============================================================
            TAB: CANDIDATE PROFILE & ELECTION SYMBOL (प्रत्याशी प्रोफाइल)
            ============================================================== -->
-      <section id="candidateProfileTab" class="tab-pane">
+            <section id="candidateProfileTab" class="tab-pane">
         <div class="card candidate-profile-card">
           <div class="candidate-header-row mb-3">
             <div>
               <span class="gatekeeper-badge" style="background:#ecfdf5; color:#047857; border-color:#a7f3d0;">🗳️ राजस्थान पंचायती राज चुनाव - 2026</span>
-              <h2 class="section-title mt-1">👤 प्रत्याशी प्रोफाइल एवं चुनाव चिन्ह</h2>
-              <p class="section-subtitle">अपनी फोटो, पद, ग्राम पंचायत, वार्ड एवं चुनाव चिन्ह चुनें। यही विवरण आपकी मतदाता पर्ची के शीर्ष पर प्रचार बैनर के रूप में प्रिंट होगा।</p>
+              <h2 class="section-title mt-1">👤 प्रत्याशी प्रोफाइल, चुनाव चिन्ह एवं सेटिंग्स</h2>
+              <p class="section-subtitle">प्रत्येक प्रत्याशी का विवरण गूगल शीट से अलग-अलग सेट होता है। सुपर एडमिन सीधे वेब ऐप से फोटो अपलोड व सेटिंग्स अपडेट कर सकते हैं।</p>
             </div>
             <div id="candidateModeBadge">
               <span class="badge" style="background:#e0f2fe; color:#0369a1; padding: 6px 14px; border-radius: 20px; font-weight:700; font-size:0.85rem;">🟢 लाइव एक्टिव</span>
             </div>
+          </div>
+
+          <!-- Apps Script Web App Master Command Bar -->
+          <div class="apps-script-control-bar p-3 mb-4" style="background:linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color:#ffffff; border-radius:10px; box-shadow:0 4px 12px rgba(30,58,138,0.25);">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div>
+                <div style="font-weight:800; font-size:1.02rem; display:flex; align-items:center; gap:8px;">
+                  <span>🌐 Google Apps Script प्रत्याशी नियंत्रण कमान कक्ष</span>
+                  <span class="badge" style="background:#10b981; color:#fff; font-size:0.7rem; padding:2px 8px; border-radius:10px;">ONLINE SHEET SYNC</span>
+                </div>
+                <div style="font-size:0.8rem; opacity:0.9; margin-top:2px;">
+                  सुपर एडमिन सीधे गूगल ऐप्स स्क्रिप्ट वेब ऐप से किसी भी प्रत्याशी की सेटिंग बदल सकते हैं, नया प्रत्याशी जोड़ सकते हैं, और फोटो अपलोड कर सकते हैं।
+                </div>
+              </div>
+              <div class="d-flex gap-2 flex-wrap align-items-center">
+                <button type="button" class="btn btn-sm" onclick="openCandidateSettingsWebApp()" style="background:#f59e0b; color:#1e293b; font-weight:800; border:none; padding:7px 14px; box-shadow:0 2px 6px rgba(245,158,11,0.4); border-radius:6px; cursor:pointer;">
+                  🚀 वेब ऐप खोलें (Open Web App) ↗
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-light" onclick="toggleCandidateSettingsIframe()" style="font-weight:700; border-radius:6px; padding:7px 12px; cursor:pointer;">
+                  🪟 इन-पेज एम्बेड (Toggle Embed)
+                </button>
+                <button type="button" class="btn btn-sm btn-success" onclick="syncCandidatesLiveFromSheet()" style="font-weight:700; background:#059669; border:none; border-radius:6px; padding:7px 14px; cursor:pointer;">
+                  🔄 शीट से लाइव सिंक करें
+                </button>
+              </div>
+            </div>
+
+            <!-- Candidate Switcher Dropdown in Candidate Profile Tab -->
+            <div class="mt-3 pt-3 d-flex align-items-center gap-2 flex-wrap" style="border-top:1px solid rgba(255,255,255,0.2);">
+              <label for="candidateProfileSelector" style="font-weight:700; font-size:0.85rem; color:#fef08a;">
+                👤 प्रत्याशी चुनें (संपादित करने या नमूना देखने हेतु):
+              </label>
+              <select id="candidateProfileSelector" class="form-select form-select-sm" onchange="onSelectCandidateProfile(this.value)" style="font-weight:700; max-width:380px; background:#ffffff; color:#0f172a; height:32px;">
+                <!-- Populated dynamically from State.adminControlUsers -->
+              </select>
+              <span style="font-size:0.75rem; opacity:0.9;">(प्रत्येक प्रत्याशी का विवरण गूगल शीट से अलग-अलग सेट होता है)</span>
+            </div>
+          </div>
+
+          <!-- Embedded Apps Script Iframe Container -->
+          <div id="candidateSettingsIframeContainer" style="display:none; margin-bottom:24px; border:2px solid #2563eb; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
+            <div style="background:#1e3a8a; color:#fff; padding:10px 16px; display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:700; font-size:0.95rem;">🌐 Google Apps Script लाइव प्रत्याशी प्रबंधन वेब ऐप (फोटो अपलोड एवं सेटिंग्स)</span>
+              <button type="button" class="btn btn-xs btn-outline-light" onclick="toggleCandidateSettingsIframe()" style="border-radius:20px; padding:2px 10px;">✕ बंद करें</button>
+            </div>
+            <iframe id="candidateSettingsIframe" src="" style="width:100%; height:820px; border:none; background:#f8fafc;"></iframe>
+          </div>
+
+          <!-- Apps Script Web App Master Command Bar -->
+          <div class="apps-script-control-bar p-3 mb-4" style="background:linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color:#ffffff; border-radius:10px; box-shadow:0 4px 12px rgba(30,58,138,0.25);">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div>
+                <div style="font-weight:800; font-size:1.02rem; display:flex; align-items:center; gap:8px;">
+                  <span>🌐 Google Apps Script प्रत्याशी नियंत्रण कमान कक्ष</span>
+                  <span class="badge" style="background:#10b981; color:#fff; font-size:0.7rem; padding:2px 8px; border-radius:10px;">ONLINE SHEET SYNC</span>
+                </div>
+                <div style="font-size:0.8rem; opacity:0.9; margin-top:2px;">
+                  सुपर एडमिन सीधे गूगल ऐप्स स्क्रिप्ट वेब ऐप से किसी भी प्रत्याशी की सेटिंग बदल सकते हैं, नया प्रत्याशी जोड़ सकते हैं, और फोटो अपलोड कर सकते हैं।
+                </div>
+              </div>
+              <div class="d-flex gap-2 flex-wrap align-items-center">
+                <button type="button" class="btn btn-sm" onclick="openCandidateSettingsWebApp()" style="background:#f59e0b; color:#1e293b; font-weight:800; border:none; padding:7px 14px; box-shadow:0 2px 6px rgba(245,158,11,0.4); border-radius:6px; cursor:pointer;">
+                  🚀 वेब ऐप खोलें (Open Web App) ↗
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-light" onclick="toggleCandidateSettingsIframe()" style="font-weight:700; border-radius:6px; padding:7px 12px; cursor:pointer;">
+                  🪟 इन-पेज एम्बेड (Toggle Embed)
+                </button>
+                <button type="button" class="btn btn-sm btn-success" onclick="syncCandidatesLiveFromSheet()" style="font-weight:700; background:#059669; border:none; border-radius:6px; padding:7px 14px; cursor:pointer;">
+                  🔄 शीट से लाइव सिंक करें
+                </button>
+              </div>
+            </div>
+
+            <!-- Candidate Switcher Dropdown in Candidate Profile Tab -->
+            <div class="mt-3 pt-3 d-flex align-items-center gap-2 flex-wrap" style="border-top:1px solid rgba(255,255,255,0.2);">
+              <label for="candidateProfileSelector" style="font-weight:700; font-size:0.85rem; color:#fef08a;">
+                👤 प्रत्याशी चुनें (संपादित करने या नमूना देखने हेतु):
+              </label>
+              <select id="candidateProfileSelector" class="form-select form-select-sm" onchange="onSelectCandidateProfile(this.value)" style="font-weight:700; max-width:380px; background:#ffffff; color:#0f172a; height:32px;">
+                <!-- Populated dynamically from State.adminControlUsers -->
+              </select>
+              <span style="font-size:0.75rem; opacity:0.9;">(प्रत्येक प्रत्याशी का विवरण गूगल शीट से अलग-अलग सेट होता है)</span>
+            </div>
+          </div>
+
+          <!-- Embedded Apps Script Iframe Container -->
+          <div id="candidateSettingsIframeContainer" style="display:none; margin-bottom:24px; border:2px solid #2563eb; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.18);">
+            <div style="background:#1e3a8a; color:#fff; padding:10px 16px; display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:700; font-size:0.95rem;">🌐 Google Apps Script लाइव प्रत्याशी प्रबंधन वेब ऐप (फोटो अपलोड एवं सेटिंग्स)</span>
+              <button type="button" class="btn btn-xs btn-outline-light" onclick="toggleCandidateSettingsIframe()" style="border-radius:20px; padding:2px 10px;">✕ बंद करें</button>
+            </div>
+            <iframe id="candidateSettingsIframe" src="" style="width:100%; height:820px; border:none; background:#f8fafc;"></iframe>
           </div>
 
           <form id="candidateProfileForm" onsubmit="handleSaveCandidateProfile(event)" class="candidate-form-grid">

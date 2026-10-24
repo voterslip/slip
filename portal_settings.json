@@ -35,7 +35,7 @@
   "google_sheet_sync": {
     "enabled": true,
     "apps_script_url": "https://script.google.com/macros/s/AKfycbwtgz2L5QC_95Jsf1r0Kum_LcTI-bJwwiBQS_O74vthHcbPD_KatsN69ytY2yqlayiM/exec",
-    "sheet_name": "Candidates",
+    "sheet_name": "Users",
     "sync_interval_ms": 3600000,
     "sync_interval_desc": "1 Hour (60 minutes)",
     "last_sync": null
