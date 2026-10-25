@@ -721,16 +721,26 @@ function handleGetUsers(adminUsername, adminPassword) {
     var mEnableWithPic = (mSettings.ENABLE_WITH_PIC_SLIPS !== false && String(mSettings.ENABLE_WITH_PIC_SLIPS).toUpperCase() !== "FALSE");
     var mEnableProfile = (mSettings.ENABLE_CANDIDATE_PROFILE !== false && String(mSettings.ENABLE_CANDIDATE_PROFILE).toUpperCase() !== "FALSE");
 
+    var canSearchVal = (row[headers.indexOf("Can_Search")] === true || String(row[headers.indexOf("Can_Search")]).toUpperCase() === "TRUE");
+    var canAlphaVal = (row[headers.indexOf("Can_Alpha")] === true || String(row[headers.indexOf("Can_Alpha")]).toUpperCase() === "TRUE");
+    var canBulkVal = (row[headers.indexOf("Can_Bulk_Slips")] === true || String(row[headers.indexOf("Can_Bulk_Slips")]).toUpperCase() === "TRUE");
+    var canWithPicVal = (row[headers.indexOf("Can_With_Pic_Slips")] === true || String(row[headers.indexOf("Can_With_Pic_Slips")]).toUpperCase() === "TRUE");
+    var canProfileVal = (row[headers.indexOf("Can_Candidate_Profile")] === true || String(row[headers.indexOf("Can_Candidate_Profile")]).toUpperCase() === "TRUE");
+
     var tabs = [];
     var isSuper = (String(row[0]).toLowerCase() === "admin" || String(row[headers.indexOf("Role")]).toUpperCase() === "SUPER_ADMIN");
+
+    // Strictly check individual checkboxes & master switch for EVERY user (including admin)
+    if (canSearchVal && mEnableSearch) tabs.push("searchTab");
+    if (canAlphaVal && mEnableAlpha) tabs.push("alphaTab");
+    if (canBulkVal && mEnableBulk) tabs.push("bulkSlipTab");
+    if (canWithPicVal && mEnableWithPic) tabs.push("withPicSlipTab");
+    if (canProfileVal && mEnableProfile) tabs.push("candidateProfileTab");
+
     if (isSuper) {
-      tabs = ["dashboardTab", "searchTab", "alphaTab", "bulkSlipTab", "withPicSlipTab", "directoryTab", "candidateProfileTab", "adminControlTab", "settingsTab"];
-    } else {
-      if ((row[headers.indexOf("Can_Search")] === true || String(row[headers.indexOf("Can_Search")]).toUpperCase() === "TRUE") && mEnableSearch) tabs.push("searchTab");
-      if ((row[headers.indexOf("Can_Alpha")] === true || String(row[headers.indexOf("Can_Alpha")]).toUpperCase() === "TRUE") && mEnableAlpha) tabs.push("alphaTab");
-      if ((row[headers.indexOf("Can_Bulk_Slips")] === true || String(row[headers.indexOf("Can_Bulk_Slips")]).toUpperCase() === "TRUE") && mEnableBulk) tabs.push("bulkSlipTab");
-      if ((row[headers.indexOf("Can_With_Pic_Slips")] === true || String(row[headers.indexOf("Can_With_Pic_Slips")]).toUpperCase() === "TRUE") && mEnableWithPic) tabs.push("withPicSlipTab");
-      if ((row[headers.indexOf("Can_Candidate_Profile")] === true || String(row[headers.indexOf("Can_Candidate_Profile")]).toUpperCase() === "TRUE") && mEnableProfile) tabs.push("candidateProfileTab");
+      tabs.push("adminControlTab");
+      tabs.push("settingsTab");
+      tabs.push("dashboardTab");
     }
 
     var uNameCol = headers.indexOf("Candidate_Name") !== -1 ? headers.indexOf("Candidate_Name") : headers.indexOf("Full_Name");
@@ -872,15 +882,17 @@ function handleGetCandidates() {
         var uCanWithPic = canWithPicCol === -1 || (row[canWithPicCol] === true || String(row[canWithPicCol]).toUpperCase() === "TRUE");
         var uCanProfile = canProfileCol === -1 || (row[canProfileCol] === true || String(row[canProfileCol]).toUpperCase() === "TRUE");
 
-        if (uNameLower === "admin" || (roleCol !== -1 && String(row[roleCol]).toUpperCase() === "SUPER_ADMIN")) {
-          return ["dashboardTab", "searchTab", "alphaTab", "bulkSlipTab", "withPicSlipTab", "directoryTab", "candidateProfileTab", "adminControlTab", "settingsTab"];
-        }
         var tList = [];
         if (uCanSearch && meSearch) tList.push("searchTab");
         if (uCanAlpha && meAlpha) tList.push("alphaTab");
         if (uCanBulk && meBulk) tList.push("bulkSlipTab");
         if (uCanWithPic && meWithPic) tList.push("withPicSlipTab");
         if (uCanProfile && meProfile) tList.push("candidateProfileTab");
+        if (uNameLower === "admin" || (roleCol !== -1 && String(row[roleCol]).toUpperCase() === "SUPER_ADMIN")) {
+          tList.push("adminControlTab");
+          tList.push("settingsTab");
+          tList.push("dashboardTab");
+        }
         return tList;
       })()
     });

@@ -3131,11 +3131,16 @@ function enforceGatekeeperState() {
     try { userConfiguredTabs = JSON.parse(userConfiguredTabs); } catch(e) { userConfiguredTabs = userConfiguredTabs.split(',').map(s=>s.trim()); }
   }
 
-  if (isSuperAdmin) {
+  if (Array.isArray(userConfiguredTabs)) {
+    // Checkboxes configured in Google Sheet (ALWAYS RESPECTED for all users, including admin!)
+    allowedTabs = [...userConfiguredTabs];
+    if (isSuperAdmin) {
+      if (!allowedTabs.includes('adminControlTab')) allowedTabs.push('adminControlTab');
+      if (!allowedTabs.includes('settingsTab')) allowedTabs.push('settingsTab');
+      if (!allowedTabs.includes('dashboardTab')) allowedTabs.push('dashboardTab');
+    }
+  } else if (isSuperAdmin) {
     allowedTabs = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'withPicSlipTab', 'directoryTab', 'candidateProfileTab', 'adminControlTab', 'settingsTab'];
-  } else if (Array.isArray(userConfiguredTabs)) {
-    // If Admin explicitly assigned custom tabs to this user (even if empty []), ALWAYS RESPECT IT!
-    allowedTabs = userConfiguredTabs;
   } else if (isIncharge) {
     // Incharge default view rights across all normal tabs for all 30 GPs (NO EDIT)
     allowedTabs = ['dashboardTab', 'searchTab', 'alphaTab', 'directoryTab'];
@@ -3180,7 +3185,7 @@ function enforceGatekeeperState() {
   const allMasterTabIds = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'withPicSlipTab', 'directoryTab', 'candidateProfileTab', 'adminControlTab', 'settingsTab'];
   let liveFilterCss = '';
   allMasterTabIds.forEach(t => {
-    if (!isSuperAdmin && !allowedTabs.includes(t)) {
+    if (!allowedTabs.includes(t)) {
       liveFilterCss += `.nav-tab[data-tab="${t}"], .bottom-nav-item[data-tab="${t}"], #${t} { display: none !important; } `;
     }
   });
@@ -3201,17 +3206,15 @@ function enforceGatekeeperState() {
   // With Pic Nav Tab Visibility (Strictly controlled by checkbox & master switch!)
   const withPicNavTab = document.getElementById('withPicSlipNavTab');
   if (withPicNavTab) {
-    withPicNavTab.style.display = (isSuperAdmin || allowedTabs.includes('withPicSlipTab')) ? 'flex' : 'none';
+    withPicNavTab.style.display = allowedTabs.includes('withPicSlipTab') ? 'flex' : 'none';
   }
 
-  // Master Switch Enforcements for all non-superadmin users
-  if (!isSuperAdmin) {
-    if (State.enableWithPicSlips === false) allowedTabs = allowedTabs.filter(t => t !== 'withPicSlipTab');
-    if (State.enableSearch === false) allowedTabs = allowedTabs.filter(t => t !== 'searchTab');
-    if (State.enableAlpha === false) allowedTabs = allowedTabs.filter(t => t !== 'alphaTab');
-    if (State.enableBulkSlips === false) allowedTabs = allowedTabs.filter(t => t !== 'bulkSlipTab');
-    if (State.enableCandidateProfile === false) allowedTabs = allowedTabs.filter(t => t !== 'candidateProfileTab');
-  }
+  // Master Switch Enforcements (Applies to all users, including admin!)
+  if (State.enableWithPicSlips === false) allowedTabs = allowedTabs.filter(t => t !== 'withPicSlipTab');
+  if (State.enableSearch === false) allowedTabs = allowedTabs.filter(t => t !== 'searchTab');
+  if (State.enableAlpha === false) allowedTabs = allowedTabs.filter(t => t !== 'alphaTab');
+  if (State.enableBulkSlips === false) allowedTabs = allowedTabs.filter(t => t !== 'bulkSlipTab');
+  if (State.enableCandidateProfile === false) allowedTabs = allowedTabs.filter(t => t !== 'candidateProfileTab');
 
   // Enforce Navigation Tab Buttons
   document.querySelectorAll('.nav-tab').forEach(tab => {
@@ -3219,9 +3222,9 @@ function enforceGatekeeperState() {
     if (tabId === 'adminControlTab' || tabId === 'settingsTab') {
       tab.style.display = isSuperAdmin ? 'flex' : 'none';
     } else if (tabId === 'candidateProfileTab') {
-      tab.style.display = (isSuperAdmin || (isCandUser && allowedTabs.includes('candidateProfileTab'))) ? 'flex' : 'none';
+      tab.style.display = allowedTabs.includes('candidateProfileTab') ? 'flex' : 'none';
     } else {
-      const isAllowed = isSuperAdmin || allowedTabs.includes(tabId);
+      const isAllowed = allowedTabs.includes(tabId);
       tab.style.display = isAllowed ? 'flex' : 'none';
     }
   });
@@ -3230,20 +3233,25 @@ function enforceGatekeeperState() {
   document.querySelectorAll('.bottom-nav-item').forEach(btn => {
     const tabId = btn.getAttribute('data-tab');
     if (tabId === 'candidateProfileTab') {
-      btn.style.display = (isSuperAdmin || (isCandUser && allowedTabs.includes('candidateProfileTab'))) ? 'flex' : 'none';
+      btn.style.display = allowedTabs.includes('candidateProfileTab') ? 'flex' : 'none';
     } else {
-      const isAllowed = isSuperAdmin || allowedTabs.includes(tabId);
+      const isAllowed = allowedTabs.includes(tabId);
       btn.style.display = isAllowed ? 'flex' : 'none';
     }
   });
 
-  // Explicitly hide disabled tab pane sections
+  // Explicitly hide disabled tab pane sections (applies to all users, including admin!)
   allMasterTabIds.forEach(t => {
-    if (!isSuperAdmin && !allowedTabs.includes(t)) {
+    if (!allowedTabs.includes(t)) {
       const p = document.getElementById(t);
       if (p) {
         p.style.display = 'none';
         p.classList.remove('active');
+      }
+      if (State.activeTab === t) {
+        const fallback = allowedTabs.find(x => x !== 'adminControlTab' && x !== 'settingsTab') || allowedTabs[0] || 'searchTab';
+        State.activeTab = fallback;
+        if (typeof switchTab === 'function') switchTab(fallback);
       }
     }
   });
