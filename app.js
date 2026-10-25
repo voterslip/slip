@@ -2926,13 +2926,11 @@ function syncCurrentUserWithConfiguredUsers() {
       cv: State.currentUser.can_view
     });
 
-    if (prevSnapshot !== newSnapshot) {
-      const sk = getSessionStorageKey();
-      localStorage.setItem(sk, JSON.stringify(State.currentUser));
-      sessionStorage.setItem(sk, JSON.stringify(State.currentUser));
-      localStorage.setItem('panchayat_user_session', JSON.stringify(State.currentUser));
-      enforceGatekeeperState();
-    }
+    const sk = getSessionStorageKey();
+    localStorage.setItem(sk, JSON.stringify(State.currentUser));
+    sessionStorage.setItem(sk, JSON.stringify(State.currentUser));
+    localStorage.setItem('panchayat_user_session', JSON.stringify(State.currentUser));
+    enforceGatekeeperState();
   }
 }
 
@@ -3204,6 +3202,15 @@ function enforceGatekeeperState() {
   const withPicNavTab = document.getElementById('withPicSlipNavTab');
   if (withPicNavTab) {
     withPicNavTab.style.display = (isSuperAdmin || allowedTabs.includes('withPicSlipTab')) ? 'flex' : 'none';
+  }
+
+  // Master Switch Enforcements for all non-superadmin users
+  if (!isSuperAdmin) {
+    if (State.enableWithPicSlips === false) allowedTabs = allowedTabs.filter(t => t !== 'withPicSlipTab');
+    if (State.enableSearch === false) allowedTabs = allowedTabs.filter(t => t !== 'searchTab');
+    if (State.enableAlpha === false) allowedTabs = allowedTabs.filter(t => t !== 'alphaTab');
+    if (State.enableBulkSlips === false) allowedTabs = allowedTabs.filter(t => t !== 'bulkSlipTab');
+    if (State.enableCandidateProfile === false) allowedTabs = allowedTabs.filter(t => t !== 'candidateProfileTab');
   }
 
   // Enforce Navigation Tab Buttons
@@ -7625,6 +7632,18 @@ async function loadAdminUsersList(force = false) {
             if (set.ENABLE_WITH_PIC_SLIPS !== undefined) {
               State.enableWithPicSlips = (set.ENABLE_WITH_PIC_SLIPS === true || String(set.ENABLE_WITH_PIC_SLIPS).toUpperCase() === 'TRUE');
             }
+            if (set.ENABLE_SEARCH !== undefined) {
+              State.enableSearch = (set.ENABLE_SEARCH === true || String(set.ENABLE_SEARCH).toUpperCase() === 'TRUE');
+            }
+            if (set.ENABLE_ALPHA !== undefined) {
+              State.enableAlpha = (set.ENABLE_ALPHA === true || String(set.ENABLE_ALPHA).toUpperCase() === 'TRUE');
+            }
+            if (set.ENABLE_BULK_SLIPS !== undefined) {
+              State.enableBulkSlips = (set.ENABLE_BULK_SLIPS === true || String(set.ENABLE_BULK_SLIPS).toUpperCase() === 'TRUE');
+            }
+            if (set.ENABLE_CANDIDATE_PROFILE !== undefined) {
+              State.enableCandidateProfile = (set.ENABLE_CANDIDATE_PROFILE === true || String(set.ENABLE_CANDIDATE_PROFILE).toUpperCase() === 'TRUE');
+            }
             localStorage.setItem('portal_tri_settings', JSON.stringify(triPortalSettings));
             applyGlobalElectionDateToUI();
           }
@@ -11758,16 +11777,29 @@ window.addEventListener('load', () => {
 });
 
 
-// LIVE GOOGLE SHEET AUTO-SYNC FOR REAL-TIME TAB TOGGLES
+// LIVE REAL-TIME AUTO-SYNC WITHOUT HARD REFRESH (8s interval + focus + visibilitychange)
 if (typeof window !== "undefined") {
-  window.addEventListener("focus", function() {
-    if (typeof loadAdminUsersList === "function" && State.currentUser) {
-      loadAdminUsersList(true);
+  let isLiveSyncing = false;
+  async function triggerLiveTabSync() {
+    if (isLiveSyncing) return;
+    if (State.currentUser && typeof loadAdminUsersList === "function") {
+      isLiveSyncing = true;
+      try {
+        await loadAdminUsersList(true);
+      } catch(_) {}
+      finally {
+        isLiveSyncing = false;
+      }
     }
+  }
+
+  window.addEventListener("focus", triggerLiveTabSync);
+  document.addEventListener("visibilitychange", function() {
+    if (document.visibilityState === "visible") triggerLiveTabSync();
   });
   setInterval(function() {
-    if (document.visibilityState === "visible" && State.currentUser && typeof loadAdminUsersList === "function") {
-      loadAdminUsersList(true);
+    if (document.visibilityState === "visible") {
+      triggerLiveTabSync();
     }
-  }, 15000);
+  }, 8000);
 }
