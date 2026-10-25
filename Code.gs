@@ -713,12 +713,25 @@ function handleGetUsers(adminUsername, adminPassword) {
     var row = data[i];
     if (!row[0]) continue;
 
+    var settRes = handleGetSettings();
+    var mSettings = (settRes && settRes.settings) ? settRes.settings : {};
+    var mEnableSearch = (mSettings.ENABLE_SEARCH !== false && String(mSettings.ENABLE_SEARCH).toUpperCase() !== "FALSE");
+    var mEnableAlpha = (mSettings.ENABLE_ALPHA !== false && String(mSettings.ENABLE_ALPHA).toUpperCase() !== "FALSE");
+    var mEnableBulk = (mSettings.ENABLE_BULK_SLIPS !== false && String(mSettings.ENABLE_BULK_SLIPS).toUpperCase() !== "FALSE");
+    var mEnableWithPic = (mSettings.ENABLE_WITH_PIC_SLIPS !== false && String(mSettings.ENABLE_WITH_PIC_SLIPS).toUpperCase() !== "FALSE");
+    var mEnableProfile = (mSettings.ENABLE_CANDIDATE_PROFILE !== false && String(mSettings.ENABLE_CANDIDATE_PROFILE).toUpperCase() !== "FALSE");
+
     var tabs = [];
-    if (row[headers.indexOf("Can_Search")] === true) tabs.push("searchTab");
-    if (row[headers.indexOf("Can_Alpha")] === true) tabs.push("alphaTab");
-    if (row[headers.indexOf("Can_Bulk_Slips")] === true) tabs.push("bulkSlipTab");
-    if (row[headers.indexOf("Can_With_Pic_Slips")] === true) tabs.push("withPicSlipTab");
-    if (row[headers.indexOf("Can_Candidate_Profile")] === true) tabs.push("candidateProfileTab");
+    var isSuper = (String(row[0]).toLowerCase() === "admin" || String(row[headers.indexOf("Role")]).toUpperCase() === "SUPER_ADMIN");
+    if (isSuper) {
+      tabs = ["dashboardTab", "searchTab", "alphaTab", "bulkSlipTab", "withPicSlipTab", "directoryTab", "candidateProfileTab", "adminControlTab", "settingsTab"];
+    } else {
+      if ((row[headers.indexOf("Can_Search")] === true || String(row[headers.indexOf("Can_Search")]).toUpperCase() === "TRUE") && mEnableSearch) tabs.push("searchTab");
+      if ((row[headers.indexOf("Can_Alpha")] === true || String(row[headers.indexOf("Can_Alpha")]).toUpperCase() === "TRUE") && mEnableAlpha) tabs.push("alphaTab");
+      if ((row[headers.indexOf("Can_Bulk_Slips")] === true || String(row[headers.indexOf("Can_Bulk_Slips")]).toUpperCase() === "TRUE") && mEnableBulk) tabs.push("bulkSlipTab");
+      if ((row[headers.indexOf("Can_With_Pic_Slips")] === true || String(row[headers.indexOf("Can_With_Pic_Slips")]).toUpperCase() === "TRUE") && mEnableWithPic) tabs.push("withPicSlipTab");
+      if ((row[headers.indexOf("Can_Candidate_Profile")] === true || String(row[headers.indexOf("Can_Candidate_Profile")]).toUpperCase() === "TRUE") && mEnableProfile) tabs.push("candidateProfileTab");
+    }
 
     var uNameCol = headers.indexOf("Candidate_Name") !== -1 ? headers.indexOf("Candidate_Name") : headers.indexOf("Full_Name");
     var uNameStr = String(row[0]).toLowerCase();
@@ -838,7 +851,38 @@ function handleGetCandidates() {
       can_print: (row[printCol] === true),
       can_download: (row[dlCol] === true),
       show_banner_on_slip: true,
-      allowed_tabs: ["searchTab", "alphaTab", "bulkSlipTab", "withPicSlipTab", "candidateProfileTab"]
+      allowed_tabs: (function() {
+        var sRes = handleGetSettings();
+        var ms = (sRes && sRes.settings) ? sRes.settings : {};
+        var meSearch = (ms.ENABLE_SEARCH !== false && String(ms.ENABLE_SEARCH).toUpperCase() !== "FALSE");
+        var meAlpha = (ms.ENABLE_ALPHA !== false && String(ms.ENABLE_ALPHA).toUpperCase() !== "FALSE");
+        var meBulk = (ms.ENABLE_BULK_SLIPS !== false && String(ms.ENABLE_BULK_SLIPS).toUpperCase() !== "FALSE");
+        var meWithPic = (ms.ENABLE_WITH_PIC_SLIPS !== false && String(ms.ENABLE_WITH_PIC_SLIPS).toUpperCase() !== "FALSE");
+        var meProfile = (ms.ENABLE_CANDIDATE_PROFILE !== false && String(ms.ENABLE_CANDIDATE_PROFILE).toUpperCase() !== "FALSE");
+
+        var canSearchCol = headers.indexOf("Can_Search");
+        var canAlphaCol = headers.indexOf("Can_Alpha");
+        var canBulkCol = headers.indexOf("Can_Bulk_Slips");
+        var canWithPicCol = headers.indexOf("Can_With_Pic_Slips");
+        var canProfileCol = headers.indexOf("Can_Candidate_Profile");
+
+        var uCanSearch = canSearchCol === -1 || (row[canSearchCol] === true || String(row[canSearchCol]).toUpperCase() === "TRUE");
+        var uCanAlpha = canAlphaCol === -1 || (row[canAlphaCol] === true || String(row[canAlphaCol]).toUpperCase() === "TRUE");
+        var uCanBulk = canBulkCol === -1 || (row[canBulkCol] === true || String(row[canBulkCol]).toUpperCase() === "TRUE");
+        var uCanWithPic = canWithPicCol === -1 || (row[canWithPicCol] === true || String(row[canWithPicCol]).toUpperCase() === "TRUE");
+        var uCanProfile = canProfileCol === -1 || (row[canProfileCol] === true || String(row[canProfileCol]).toUpperCase() === "TRUE");
+
+        if (uNameLower === "admin" || (roleCol !== -1 && String(row[roleCol]).toUpperCase() === "SUPER_ADMIN")) {
+          return ["dashboardTab", "searchTab", "alphaTab", "bulkSlipTab", "withPicSlipTab", "directoryTab", "candidateProfileTab", "adminControlTab", "settingsTab"];
+        }
+        var tList = [];
+        if (uCanSearch && meSearch) tList.push("searchTab");
+        if (uCanAlpha && meAlpha) tList.push("alphaTab");
+        if (uCanBulk && meBulk) tList.push("bulkSlipTab");
+        if (uCanWithPic && meWithPic) tList.push("withPicSlipTab");
+        if (uCanProfile && meProfile) tList.push("candidateProfileTab");
+        return tList;
+      })()
     });
   }
 

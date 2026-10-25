@@ -3179,7 +3179,7 @@ function enforceGatekeeperState() {
   }
 
   // Real-time dynamic CSS filter update (replaces stale stylesheet from initial page load)
-  const allMasterTabIds = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'directoryTab', 'candidateProfileTab', 'adminControlTab', 'settingsTab'];
+  const allMasterTabIds = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'withPicSlipTab', 'directoryTab', 'candidateProfileTab', 'adminControlTab', 'settingsTab'];
   let liveFilterCss = '';
   allMasterTabIds.forEach(t => {
     if (!isSuperAdmin && !allowedTabs.includes(t)) {
@@ -3198,6 +3198,12 @@ function enforceGatekeeperState() {
   const candidateNavTab = document.getElementById('candidateNavTab');
   if (candidateNavTab) {
     candidateNavTab.style.display = (isCandUser && allowedTabs.includes('candidateProfileTab')) ? 'flex' : 'none';
+  }
+
+  // With Pic Nav Tab Visibility (Strictly controlled by checkbox & master switch!)
+  const withPicNavTab = document.getElementById('withPicSlipNavTab');
+  if (withPicNavTab) {
+    withPicNavTab.style.display = (isSuperAdmin || allowedTabs.includes('withPicSlipTab')) ? 'flex' : 'none';
   }
 
   // Enforce Navigation Tab Buttons
@@ -6036,11 +6042,12 @@ async function syncLatestActiveUsersFromAppsScript() {
     if (data && data.success && Array.isArray(data.users) && data.users.length > 0) {
       State.adminUsers = data.users.map(u => {
         let tabs = [];
-        if (u.tab_search !== undefined || u.tab_alpha !== undefined || u.tab_bulkslip !== undefined || u.tab_directory !== undefined) {
+        if (u.tab_search !== undefined || u.tab_alpha !== undefined || u.tab_bulkslip !== undefined || u.tab_directory !== undefined || u.tab_with_pic !== undefined || u.can_with_pic_slips !== undefined) {
           if (u.tab_search === true || String(u.tab_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
           if (u.tab_alpha === true || String(u.tab_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
           if (u.tab_bulkslip === true || String(u.tab_bulkslip).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
-          if (u.tab_directory === true || String(u.tab_directory).toUpperCase() === 'TRUE') tabs.push('directoryTab');
+          if (u.tab_with_pic === true || String(u.tab_with_pic).toUpperCase() === 'TRUE' || u.can_with_pic_slips === true || String(u.can_with_pic_slips).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
+              if (u.tab_directory === true || String(u.tab_directory).toUpperCase() === 'TRUE') tabs.push('directoryTab');
         } else if (Array.isArray(u.allowed_tabs)) {
           tabs = u.allowed_tabs;
         } else if (typeof u.allowed_tabs === 'string') {
@@ -6098,11 +6105,12 @@ async function syncLatestActiveUsersFromAppsScript() {
       if (!State.adminControlUsers) State.adminControlUsers = [];
       const candsList = cData.candidates.map(sc => {
         let tabs = [];
-        if (sc.tab_search !== undefined || sc.tab_alpha !== undefined || sc.tab_bulkslip !== undefined || sc.tab_profile !== undefined) {
+        if (sc.tab_search !== undefined || sc.tab_alpha !== undefined || sc.tab_bulkslip !== undefined || sc.tab_profile !== undefined || sc.tab_with_pic !== undefined || sc.can_with_pic_slips !== undefined) {
           if (sc.tab_search === true || String(sc.tab_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
           if (sc.tab_alpha === true || String(sc.tab_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
           if (sc.tab_bulkslip === true || String(sc.tab_bulkslip).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
-          if (sc.tab_profile === true || String(sc.tab_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
+          if (sc.tab_with_pic === true || String(sc.tab_with_pic).toUpperCase() === 'TRUE' || sc.can_with_pic_slips === true || String(sc.can_with_pic_slips).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
+              if (sc.tab_profile === true || String(sc.tab_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
         } else if (Array.isArray(sc.allowed_tabs)) {
           tabs = sc.allowed_tabs.filter(t => t !== 'directoryTab');
         } else if (typeof sc.allowed_tabs === 'string') {
@@ -7657,10 +7665,11 @@ async function loadAdminUsersList(force = false) {
         if (cData && Array.isArray(cData.candidates)) {
           const candsList = cData.candidates.map(sc => {
             let tabs = [];
-            if (sc.tab_search !== undefined || sc.tab_alpha !== undefined || sc.tab_bulkslip !== undefined || sc.tab_profile !== undefined) {
+            if (sc.tab_search !== undefined || sc.tab_alpha !== undefined || sc.tab_bulkslip !== undefined || sc.tab_profile !== undefined || sc.tab_with_pic !== undefined || sc.can_with_pic_slips !== undefined) {
               if (sc.tab_search === true || String(sc.tab_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
               if (sc.tab_alpha === true || String(sc.tab_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
               if (sc.tab_bulkslip === true || String(sc.tab_bulkslip).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
+              if (sc.tab_with_pic === true || String(sc.tab_with_pic).toUpperCase() === 'TRUE' || sc.can_with_pic_slips === true || String(sc.can_with_pic_slips).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
               if (sc.tab_profile === true || String(sc.tab_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
             } else if (Array.isArray(sc.allowed_tabs)) {
               tabs = sc.allowed_tabs.filter(t => t !== 'directoryTab');
@@ -11747,3 +11756,18 @@ window.addEventListener('load', () => {
     }
   }, 500);
 });
+
+
+// LIVE GOOGLE SHEET AUTO-SYNC FOR REAL-TIME TAB TOGGLES
+if (typeof window !== "undefined") {
+  window.addEventListener("focus", function() {
+    if (typeof loadAdminUsersList === "function" && State.currentUser) {
+      loadAdminUsersList(true);
+    }
+  });
+  setInterval(function() {
+    if (document.visibilityState === "visible" && State.currentUser && typeof loadAdminUsersList === "function") {
+      loadAdminUsersList(true);
+    }
+  }, 15000);
+}
