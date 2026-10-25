@@ -802,7 +802,12 @@ function handleGetUsers(adminUsername, adminPassword) {
       election_time: String(row[headers.indexOf("Election_Time")] || ""),
       allowed_tabs: tabs,
       can_print: (row[headers.indexOf("Can_Print")] === true),
-      can_download: (row[headers.indexOf("Can_Download")] === true)
+      can_download: (row[headers.indexOf("Can_Download")] === true),
+      can_search: canSearchVal,
+      can_alpha: canAlphaVal,
+      can_bulk_slips: canBulkVal,
+      can_with_pic_slips: canWithPicVal,
+      can_candidate_profile: canProfileVal
     });
   }
 
