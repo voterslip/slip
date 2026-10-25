@@ -469,16 +469,7 @@ function showAppInfo() {
  * प्रत्याशी सेटिंग्स एवं नियंत्रण कक्ष वेब ऐप HTML आउटपुट जनरेटर
  */
 function getCandidateSettingsHtmlOutput() {
-  var htmlContent = "";
-  try {
-    htmlContent = HtmlService.createTemplateFromFile("CandidateSettings").evaluate().getContent();
-  } catch(e1) {
-    try {
-      htmlContent = HtmlService.createTemplateFromFile("Index").evaluate().getContent();
-    } catch(e2) {
-      htmlContent = buildCandidateSettingsWebHtml();
-    }
-  }
+  var htmlContent = buildCandidateSettingsWebHtml();
   return HtmlService.createHtmlOutput(htmlContent)
     .setTitle("🗳️ राजस्थान पंचायत आम चुनाव 2026 - सुपर एडमिन प्रत्याशी सेटिंग्स एवं नियंत्रण कक्ष")
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
