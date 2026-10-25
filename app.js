@@ -8165,16 +8165,54 @@ async function toggleUserTab(userId, tabName, isChecked) {
 }
 
 async function saveAdminUserToServer(userObj) {
-  try {
-    await fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(userObj)
-    });
-    broadcastAdminUpdate({ type: 'USER_UPDATED', userId: userObj.id || userObj.username });
-  } catch (e) {
-    console.log('Server save fallback:', e);
+  if (!userObj) return;
+
+  const uName = userObj.username || userObj.id;
+  const candPayload = {
+    action: 'saveCandidate',
+    username: uName,
+    role: userObj.role || 'CANDIDATE',
+    status: (userObj.status || 'ACTIVE').toUpperCase(),
+    can_print: (userObj.can_print !== false && userObj.can_print !== 0),
+    can_download: (userObj.can_download !== false && userObj.can_download !== 0)
+  };
+
+  // Convert allowed_tabs to individual booleans for sheet columns
+  if (Array.isArray(userObj.allowed_tabs)) {
+    candPayload.can_search = userObj.allowed_tabs.includes('searchTab');
+    candPayload.can_alpha = userObj.allowed_tabs.includes('alphaTab');
+    candPayload.can_bulk_slips = userObj.allowed_tabs.includes('bulkSlipTab');
+    candPayload.can_with_pic_slips = userObj.allowed_tabs.includes('withPicSlipTab');
+    candPayload.can_candidate_profile = userObj.allowed_tabs.includes('candidateProfileTab');
+  } else {
+    if (userObj.can_search !== undefined) candPayload.can_search = !!userObj.can_search;
+    if (userObj.can_alpha !== undefined) candPayload.can_alpha = !!userObj.can_alpha;
+    if (userObj.can_bulk_slips !== undefined) candPayload.can_bulk_slips = !!userObj.can_bulk_slips;
+    if (userObj.can_with_pic_slips !== undefined) candPayload.can_with_pic_slips = !!userObj.can_with_pic_slips;
+    if (userObj.can_candidate_profile !== undefined) candPayload.can_candidate_profile = !!userObj.can_candidate_profile;
   }
+
+  if (userObj.password) candPayload.password = userObj.password;
+  if (userObj.mobile) candPayload.mobile = userObj.mobile;
+  if (userObj.fullName || userObj.full_name) candPayload.candidate_name = userObj.fullName || userObj.full_name;
+  if (userObj.assigned_panchayats || userObj.allowed_panchayats) candPayload.allowed_panchayats = userObj.assigned_panchayats || userObj.allowed_panchayats;
+  if (userObj.assigned_wards || userObj.allowed_wards) candPayload.allowed_panchayat_wards = userObj.assigned_wards || userObj.allowed_wards;
+
+  // Mark local edit time to prevent stale background overwrite for 15s
+  window._lastSuperAdminLocalEditTime = Date.now();
+
+  try {
+    if (typeof postToAppsScript === 'function') {
+      const res = await postToAppsScript(candPayload);
+      if (res && res.success) {
+        console.log('✅ Two-way sync: User updated in Google Sheet:', uName);
+      }
+    }
+  } catch (err) {
+    console.warn('Google Sheet user save error:', err);
+  }
+
+  broadcastAdminUpdate({ type: 'USER_UPDATED', userId: uName });
 }
 
 // Instant Live Permission & Settings Sync Engine across tabs & background
@@ -10306,24 +10344,50 @@ async function togglePortalStatus(portalKey) {
 }
 
 async function savePortalModuleSettings() {
-  const mods = {
-    search: document.getElementById('chkModSearch')?.checked ?? true,
-    alpha: document.getElementById('chkModAlpha')?.checked ?? true,
-    slips: document.getElementById('chkModSlips')?.checked ?? true,
-    candidate_edit: document.getElementById('chkModCandidate')?.checked ?? true
-  };
-  if (!triPortalSettings.voter_portal) triPortalSettings.voter_portal = {};
-  triPortalSettings.voter_portal.modules = mods;
+  const searchEnabled = document.getElementById('chkModSearch')?.checked ?? true;
+  const alphaEnabled = document.getElementById('chkModAlpha')?.checked ?? true;
+  const slipsEnabled = document.getElementById('chkModSlips')?.checked ?? true;
+  const candidateEditEnabled = document.getElementById('chkModCandidate')?.checked ?? true;
 
+  State.enableSearch = searchEnabled;
+  State.enableAlpha = alphaEnabled;
+  State.enableBulkSlips = slipsEnabled;
+  State.enableCandidateProfile = candidateEditEnabled;
+
+  if (!triPortalSettings.voter_portal) triPortalSettings.voter_portal = {};
+  triPortalSettings.voter_portal.modules = {
+    search: searchEnabled,
+    alpha: alphaEnabled,
+    slips: slipsEnabled,
+    candidate_edit: candidateEditEnabled
+  };
   localStorage.setItem('portal_tri_settings', JSON.stringify(triPortalSettings));
 
-  try {
-    await fetch('/api/portal-settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(triPortalSettings)
-    });
-  } catch(e) {}
+  // Mark local edit time to prevent stale background overwrite
+  window._lastSuperAdminLocalEditTime = Date.now();
+
+  enforceGatekeeperState();
+
+  // TWO-WAY SYNC: Immediately save master switches to Google Sheet Settings!
+  if (typeof postToAppsScript === 'function') {
+    showToast('⏳ गूगल शीट में मास्टर सेटिंग्स अपडेट हो रही हैं...', 'info');
+    try {
+      const res = await postToAppsScript({
+        action: 'saveSettings',
+        settings: {
+          ENABLE_SEARCH: searchEnabled,
+          ENABLE_ALPHA: alphaEnabled,
+          ENABLE_BULK_SLIPS: slipsEnabled,
+          ENABLE_CANDIDATE_PROFILE: candidateEditEnabled
+        }
+      });
+      if (res && res.success) {
+        showToast('✅ गूगल शीट में मास्टर सेटिंग्स सुरक्षित हुईं!', 'success');
+      }
+    } catch(err) {
+      console.warn('Google Sheet saveSettings error:', err);
+    }
+  }
 }
 
 async function fetchRemoteSettings() {
@@ -11820,6 +11884,10 @@ if (typeof window !== "undefined") {
   let isLiveSyncing = false;
   async function triggerLiveTabSync() {
     if (isLiveSyncing) return;
+    // Two-way sync guard: if Super Admin just edited settings within last 12s, skip overwrite
+    if (window._lastSuperAdminLocalEditTime && (Date.now() - window._lastSuperAdminLocalEditTime < 12000)) {
+      return;
+    }
     if (State.currentUser && typeof loadAdminUsersList === "function") {
       isLiveSyncing = true;
       try {

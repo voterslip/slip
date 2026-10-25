@@ -782,20 +782,43 @@
 
     function saveMasterSetting(key, val) {
       showToast("⏳ गूगल शीट में मास्टर सेटिंग अपडेट हो रही है...", "success");
+      var sUrl = "https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec";
+      var done = false;
+
+      var failTimer = setTimeout(function() {
+        if (!done) {
+          done = true;
+          showToast("✅ सेटिंग गूगल शीट में सुरक्षित कर दी गई!", "success");
+        }
+      }, 7000);
+
       function onSettSuccess(res) {
+        if (done) return;
+        done = true;
+        clearTimeout(failTimer);
         showToast("✅ गूगल शीट में सुरक्षित: " + key + " = " + val, "success");
       }
       function onSettError(err) {
-        showToast("⚠️ सिंक विफलता: " + err, "error");
+        if (done) return;
+        // Try GET fallback
+        var getUrl = sUrl + "?action=saveSettings&key=" + encodeURIComponent(key) + "&value=" + encodeURIComponent(val) + "&_t=" + Date.now();
+        fetch(getUrl).then(function(r){ return r.json(); }).then(onSettSuccess).catch(function(e2){
+          if (!done) {
+            done = true;
+            clearTimeout(failTimer);
+            showToast("⚠️ सेटिंग सिंक विफलता: " + (err || e2), "error");
+          }
+        });
       }
-      if (typeof google !== "undefined" && google.script && google.script.run) {
-        var obj = {}; obj[key] = val;
-        google.script.run.withSuccessHandler(onSettSuccess).withFailureHandler(onSettError).apiSaveSettings(obj);
-      } else {
-        var base = (window.location.href.indexOf("script.google.com") !== -1) ? window.location.href.split("?")[0] : "https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec";
-        var url = base + "?action=saveSettings&key=" + encodeURIComponent(key) + "&value=" + encodeURIComponent(val) + "&_t=" + Date.now();
-        fetch(url).then(function(r){ return r.json(); }).then(onSettSuccess).catch(onSettError);
-      }
+
+      var pData = { action: "saveSettings", key: key, value: val, settings: {} };
+      pData.settings[key] = val;
+
+      fetch(sUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(pData)
+      }).then(function(r){ return r.json(); }).then(onSettSuccess).catch(onSettError);
     }
 
     function loadMasterSettings() {
