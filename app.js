@@ -3131,7 +3131,7 @@ function enforceGatekeeperState() {
     try { userConfiguredTabs = JSON.parse(userConfiguredTabs); } catch(e) { userConfiguredTabs = userConfiguredTabs.split(',').map(s=>s.trim()); }
   }
 
-  if (Array.isArray(userConfiguredTabs)) {
+  if (Array.isArray(userConfiguredTabs) && userConfiguredTabs.length > 0) {
     // Checkboxes configured in Google Sheet (ALWAYS RESPECTED for all users, including admin!)
     allowedTabs = [...userConfiguredTabs];
     if (isSuperAdmin) {
@@ -6057,16 +6057,22 @@ async function syncLatestActiveUsersFromAppsScript() {
     if (data && data.success && Array.isArray(data.users) && data.users.length > 0) {
       State.adminUsers = data.users.map(u => {
         let tabs = [];
-        if (u.tab_search !== undefined || u.tab_alpha !== undefined || u.tab_bulkslip !== undefined || u.tab_directory !== undefined || u.tab_with_pic !== undefined || u.can_with_pic_slips !== undefined) {
+        if (Array.isArray(u.allowed_tabs) && u.allowed_tabs.length > 0) {
+          tabs = [...u.allowed_tabs];
+        } else if (typeof u.allowed_tabs === 'string' && u.allowed_tabs.trim()) {
+          try { tabs = JSON.parse(u.allowed_tabs); } catch(e) { tabs = u.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
+        } else if (u.can_search !== undefined || u.can_alpha !== undefined || u.can_bulk_slips !== undefined || u.can_with_pic_slips !== undefined || u.can_candidate_profile !== undefined) {
+          if (u.can_search === true || String(u.can_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
+          if (u.can_alpha === true || String(u.can_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
+          if (u.can_bulk_slips === true || String(u.can_bulk_slips).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
+          if (u.can_with_pic_slips === true || String(u.can_with_pic_slips).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
+          if (u.can_candidate_profile === true || String(u.can_candidate_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
+        } else if (u.tab_search !== undefined || u.tab_alpha !== undefined || u.tab_bulkslip !== undefined || u.tab_directory !== undefined || u.tab_with_pic !== undefined) {
           if (u.tab_search === true || String(u.tab_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
           if (u.tab_alpha === true || String(u.tab_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
           if (u.tab_bulkslip === true || String(u.tab_bulkslip).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
-          if (u.tab_with_pic === true || String(u.tab_with_pic).toUpperCase() === 'TRUE' || u.can_with_pic_slips === true || String(u.can_with_pic_slips).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
-              if (u.tab_directory === true || String(u.tab_directory).toUpperCase() === 'TRUE') tabs.push('directoryTab');
-        } else if (Array.isArray(u.allowed_tabs)) {
-          tabs = u.allowed_tabs;
-        } else if (typeof u.allowed_tabs === 'string') {
-          try { tabs = JSON.parse(u.allowed_tabs); } catch(e) { tabs = u.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
+          if (u.tab_with_pic === true || String(u.tab_with_pic).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
+          if (u.tab_directory === true || String(u.tab_directory).toUpperCase() === 'TRUE') tabs.push('directoryTab');
         }
         return {
           id: u.id || u.userId || u.user_id || u.username,
@@ -6120,16 +6126,23 @@ async function syncLatestActiveUsersFromAppsScript() {
       if (!State.adminControlUsers) State.adminControlUsers = [];
       const candsList = cData.candidates.map(sc => {
         let tabs = [];
-        if (sc.tab_search !== undefined || sc.tab_alpha !== undefined || sc.tab_bulkslip !== undefined || sc.tab_profile !== undefined || sc.tab_with_pic !== undefined || sc.can_with_pic_slips !== undefined) {
+        if (Array.isArray(sc.allowed_tabs) && sc.allowed_tabs.length > 0) {
+          tabs = sc.allowed_tabs.filter(t => t !== 'directoryTab');
+        } else if (typeof sc.allowed_tabs === 'string' && sc.allowed_tabs.trim()) {
+          try { tabs = JSON.parse(sc.allowed_tabs); } catch(e) { tabs = sc.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
+          tabs = tabs.filter(t => t !== 'directoryTab');
+        } else if (sc.can_search !== undefined || sc.can_alpha !== undefined || sc.can_bulk_slips !== undefined || sc.can_with_pic_slips !== undefined || sc.can_candidate_profile !== undefined) {
+          if (sc.can_search === true || String(sc.can_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
+          if (sc.can_alpha === true || String(sc.can_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
+          if (sc.can_bulk_slips === true || String(sc.can_bulk_slips).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
+          if (sc.can_with_pic_slips === true || String(sc.can_with_pic_slips).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
+          if (sc.can_candidate_profile === true || String(sc.can_candidate_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
+        } else if (sc.tab_search !== undefined || sc.tab_alpha !== undefined || sc.tab_bulkslip !== undefined || sc.tab_profile !== undefined || sc.tab_with_pic !== undefined) {
           if (sc.tab_search === true || String(sc.tab_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
           if (sc.tab_alpha === true || String(sc.tab_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
           if (sc.tab_bulkslip === true || String(sc.tab_bulkslip).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
-          if (sc.tab_with_pic === true || String(sc.tab_with_pic).toUpperCase() === 'TRUE' || sc.can_with_pic_slips === true || String(sc.can_with_pic_slips).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
-              if (sc.tab_profile === true || String(sc.tab_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
-        } else if (Array.isArray(sc.allowed_tabs)) {
-          tabs = sc.allowed_tabs.filter(t => t !== 'directoryTab');
-        } else if (typeof sc.allowed_tabs === 'string') {
-          try { tabs = JSON.parse(sc.allowed_tabs); } catch(e) { tabs = sc.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
+          if (sc.tab_with_pic === true || String(sc.tab_with_pic).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
+          if (sc.tab_profile === true || String(sc.tab_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
         }
         return {
           id: sc.id || ('cand_' + sc.username),
@@ -7666,15 +7679,21 @@ async function loadAdminUsersList(force = false) {
         if (gData && Array.isArray(gData.users)) {
           combinedUsers = gData.users.map(u => {
             let tabs = [];
-            if (u.tab_search !== undefined || u.tab_alpha !== undefined || u.tab_bulkslip !== undefined || u.tab_directory !== undefined) {
+            if (Array.isArray(u.allowed_tabs) && u.allowed_tabs.length > 0) {
+              tabs = [...u.allowed_tabs];
+            } else if (typeof u.allowed_tabs === 'string' && u.allowed_tabs.trim()) {
+              try { tabs = JSON.parse(u.allowed_tabs); } catch(e) { tabs = u.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
+            } else if (u.can_search !== undefined || u.can_alpha !== undefined || u.can_bulk_slips !== undefined || u.can_with_pic_slips !== undefined || u.can_candidate_profile !== undefined) {
+              if (u.can_search === true || String(u.can_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
+              if (u.can_alpha === true || String(u.can_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
+              if (u.can_bulk_slips === true || String(u.can_bulk_slips).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
+              if (u.can_with_pic_slips === true || String(u.can_with_pic_slips).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
+              if (u.can_candidate_profile === true || String(u.can_candidate_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
+            } else if (u.tab_search !== undefined || u.tab_alpha !== undefined || u.tab_bulkslip !== undefined || u.tab_directory !== undefined) {
               if (u.tab_search === true || String(u.tab_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
               if (u.tab_alpha === true || String(u.tab_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
               if (u.tab_bulkslip === true || String(u.tab_bulkslip).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
               if (u.tab_directory === true || String(u.tab_directory).toUpperCase() === 'TRUE') tabs.push('directoryTab');
-            } else if (Array.isArray(u.allowed_tabs)) {
-              tabs = u.allowed_tabs;
-            } else if (typeof u.allowed_tabs === 'string') {
-              try { tabs = JSON.parse(u.allowed_tabs); } catch(e) { tabs = u.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
             }
             return {
               ...u,
@@ -7692,16 +7711,23 @@ async function loadAdminUsersList(force = false) {
         if (cData && Array.isArray(cData.candidates)) {
           const candsList = cData.candidates.map(sc => {
             let tabs = [];
-            if (sc.tab_search !== undefined || sc.tab_alpha !== undefined || sc.tab_bulkslip !== undefined || sc.tab_profile !== undefined || sc.tab_with_pic !== undefined || sc.can_with_pic_slips !== undefined) {
+            if (Array.isArray(sc.allowed_tabs) && sc.allowed_tabs.length > 0) {
+              tabs = sc.allowed_tabs.filter(t => t !== 'directoryTab');
+            } else if (typeof sc.allowed_tabs === 'string' && sc.allowed_tabs.trim()) {
+              try { tabs = JSON.parse(sc.allowed_tabs); } catch(e) { tabs = sc.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
+              tabs = tabs.filter(t => t !== 'directoryTab');
+            } else if (sc.can_search !== undefined || sc.can_alpha !== undefined || sc.can_bulk_slips !== undefined || sc.can_with_pic_slips !== undefined || sc.can_candidate_profile !== undefined) {
+              if (sc.can_search === true || String(sc.can_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
+              if (sc.can_alpha === true || String(sc.can_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
+              if (sc.can_bulk_slips === true || String(sc.can_bulk_slips).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
+              if (sc.can_with_pic_slips === true || String(sc.can_with_pic_slips).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
+              if (sc.can_candidate_profile === true || String(sc.can_candidate_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
+            } else if (sc.tab_search !== undefined || sc.tab_alpha !== undefined || sc.tab_bulkslip !== undefined || sc.tab_profile !== undefined || sc.tab_with_pic !== undefined) {
               if (sc.tab_search === true || String(sc.tab_search).toUpperCase() === 'TRUE') tabs.push('searchTab');
               if (sc.tab_alpha === true || String(sc.tab_alpha).toUpperCase() === 'TRUE') tabs.push('alphaTab');
               if (sc.tab_bulkslip === true || String(sc.tab_bulkslip).toUpperCase() === 'TRUE') tabs.push('bulkSlipTab');
-              if (sc.tab_with_pic === true || String(sc.tab_with_pic).toUpperCase() === 'TRUE' || sc.can_with_pic_slips === true || String(sc.can_with_pic_slips).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
+              if (sc.tab_with_pic === true || String(sc.tab_with_pic).toUpperCase() === 'TRUE') tabs.push('withPicSlipTab');
               if (sc.tab_profile === true || String(sc.tab_profile).toUpperCase() === 'TRUE') tabs.push('candidateProfileTab');
-            } else if (Array.isArray(sc.allowed_tabs)) {
-              tabs = sc.allowed_tabs.filter(t => t !== 'directoryTab');
-            } else if (typeof sc.allowed_tabs === 'string') {
-              try { tabs = JSON.parse(sc.allowed_tabs); } catch(e) { tabs = sc.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
             }
             const candUserObj = {
               id: sc.id || ('cand_' + sc.username),
@@ -10600,14 +10626,18 @@ async function checkLivePermissionsUpdate() {
     }
 
     if (freshUser) {
-      let newTabs = freshUser.allowed_tabs;
-      if (typeof newTabs === 'string') {
-        try { newTabs = JSON.parse(newTabs); } catch(e) { newTabs = newTabs.split(',').map(s=>s.trim()).filter(Boolean); }
-      }
-      if (!Array.isArray(newTabs)) newTabs = [];
-
-      if (freshUser.tab_search !== undefined || freshUser.tab_alpha !== undefined || freshUser.tab_bulkslip !== undefined || freshUser.tab_profile !== undefined) {
-        newTabs = [];
+      let newTabs = [];
+      if (Array.isArray(freshUser.allowed_tabs) && freshUser.allowed_tabs.length > 0) {
+        newTabs = [...freshUser.allowed_tabs];
+      } else if (typeof freshUser.allowed_tabs === 'string' && freshUser.allowed_tabs.trim()) {
+        try { newTabs = JSON.parse(freshUser.allowed_tabs); } catch(e) { newTabs = freshUser.allowed_tabs.split(',').map(s=>s.trim()).filter(Boolean); }
+      } else if (freshUser.can_search !== undefined || freshUser.can_alpha !== undefined || freshUser.can_bulk_slips !== undefined || freshUser.can_with_pic_slips !== undefined || freshUser.can_candidate_profile !== undefined) {
+        if (freshUser.can_search === true || String(freshUser.can_search).toUpperCase() === 'TRUE') newTabs.push('searchTab');
+        if (freshUser.can_alpha === true || String(freshUser.can_alpha).toUpperCase() === 'TRUE') newTabs.push('alphaTab');
+        if (freshUser.can_bulk_slips === true || String(freshUser.can_bulk_slips).toUpperCase() === 'TRUE') newTabs.push('bulkSlipTab');
+        if (freshUser.can_with_pic_slips === true || String(freshUser.can_with_pic_slips).toUpperCase() === 'TRUE') newTabs.push('withPicSlipTab');
+        if (freshUser.can_candidate_profile === true || String(freshUser.can_candidate_profile).toUpperCase() === 'TRUE') newTabs.push('candidateProfileTab');
+      } else if (freshUser.tab_search !== undefined || freshUser.tab_alpha !== undefined || freshUser.tab_bulkslip !== undefined || freshUser.tab_profile !== undefined) {
         if (freshUser.tab_search === true || String(freshUser.tab_search).toUpperCase() === 'TRUE') newTabs.push('searchTab');
         if (freshUser.tab_alpha === true || String(freshUser.tab_alpha).toUpperCase() === 'TRUE') newTabs.push('alphaTab');
         if (freshUser.tab_bulkslip === true || String(freshUser.tab_bulkslip).toUpperCase() === 'TRUE') newTabs.push('bulkSlipTab');
