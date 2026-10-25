@@ -3181,6 +3181,13 @@ function enforceGatekeeperState() {
     }
   }
 
+  // Master Switch Enforcements (Applies to all users, including admin!)
+  if (State.enableWithPicSlips === false) allowedTabs = allowedTabs.filter(t => t !== 'withPicSlipTab');
+  if (State.enableSearch === false) allowedTabs = allowedTabs.filter(t => t !== 'searchTab');
+  if (State.enableAlpha === false) allowedTabs = allowedTabs.filter(t => t !== 'alphaTab');
+  if (State.enableBulkSlips === false) allowedTabs = allowedTabs.filter(t => t !== 'bulkSlipTab');
+  if (State.enableCandidateProfile === false) allowedTabs = allowedTabs.filter(t => t !== 'candidateProfileTab');
+
   // Real-time dynamic CSS filter update (replaces stale stylesheet from initial page load)
   const allMasterTabIds = ['dashboardTab', 'searchTab', 'alphaTab', 'bulkSlipTab', 'withPicSlipTab', 'directoryTab', 'candidateProfileTab', 'adminControlTab', 'settingsTab'];
   let liveFilterCss = '';
@@ -3208,13 +3215,6 @@ function enforceGatekeeperState() {
   if (withPicNavTab) {
     withPicNavTab.style.display = allowedTabs.includes('withPicSlipTab') ? 'flex' : 'none';
   }
-
-  // Master Switch Enforcements (Applies to all users, including admin!)
-  if (State.enableWithPicSlips === false) allowedTabs = allowedTabs.filter(t => t !== 'withPicSlipTab');
-  if (State.enableSearch === false) allowedTabs = allowedTabs.filter(t => t !== 'searchTab');
-  if (State.enableAlpha === false) allowedTabs = allowedTabs.filter(t => t !== 'alphaTab');
-  if (State.enableBulkSlips === false) allowedTabs = allowedTabs.filter(t => t !== 'bulkSlipTab');
-  if (State.enableCandidateProfile === false) allowedTabs = allowedTabs.filter(t => t !== 'candidateProfileTab');
 
   // Enforce Navigation Tab Buttons
   document.querySelectorAll('.nav-tab').forEach(tab => {

@@ -224,6 +224,30 @@
           </div>
         </div>
 
+        <!-- Tab Permissions Checkboxes -->
+        <div style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:8px; padding:12px; margin-top:14px; margin-bottom:14px;">
+          <div style="font-weight:800; font-size:12px; color:#1e3a8a; margin-bottom:8px;">
+            📑 पोर्टल टैब अनुमतियां (इस प्रत्याशी को कौन-से टैब दिखेंगे - अनचेक करने पर टैब गायब हो जाएगा):
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center;">
+            <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; cursor:pointer; font-size:12px; background:#fff; padding:4px 8px; border-radius:4px; border:1px solid #cbd5e1;">
+              <input type="checkbox" id="formCanSearch" checked> 🔍 मतदाता खोज (Search)
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; cursor:pointer; font-size:12px; background:#fff; padding:4px 8px; border-radius:4px; border:1px solid #cbd5e1;">
+              <input type="checkbox" id="formCanAlpha" checked> 🔤 वर्णमाला (Alpha)
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; cursor:pointer; font-size:12px; background:#fff; padding:4px 8px; border-radius:4px; border:1px solid #cbd5e1;">
+              <input type="checkbox" id="formCanBulk" checked> 📑 बल्क पर्चियां (Bulk)
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; cursor:pointer; font-size:12px; background:#fff; padding:4px 8px; border-radius:4px; border:1px solid #cbd5e1;">
+              <input type="checkbox" id="formCanWithPic" checked> 🖼️ सचित्र पर्ची (With Pic)
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; cursor:pointer; font-size:12px; background:#fff; padding:4px 8px; border-radius:4px; border:1px solid #cbd5e1;">
+              <input type="checkbox" id="formCanProfile" checked> 👤 प्रत्याशी प्रोफाइल
+            </label>
+          </div>
+        </div>
+
         <!-- Live Perforated Slip Specimen Card -->
         <div style="margin-top:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
           <div style="font-weight:800; font-size:12px; color:#334155; margin-bottom:6px; text-align:center;">📋 लाइव पर्ची प्रारूप नमूना (Live Voter Slip Specimen)</div>
@@ -397,6 +421,11 @@
       document.getElementById("formTime").value = c.election_time || "प्रातः 7:00 बजे से सायं 5:00 बजे तक";
       document.getElementById("formStatus").checked = (c.status === "ACTIVE");
       document.getElementById("formAllowVoterPhoto").checked = !!(c.allow_voter_photo);
+      document.getElementById("formCanSearch").checked = (c.can_search !== false);
+      document.getElementById("formCanAlpha").checked = (c.can_alpha !== false);
+      document.getElementById("formCanBulk").checked = (c.can_bulk_slips !== false);
+      document.getElementById("formCanWithPic").checked = (c.can_with_pic_slips !== false);
+      document.getElementById("formCanProfile").checked = (c.can_candidate_profile !== false);
       var topSel = document.getElementById("topCandSelectDropdown"); if (topSel) topSel.value = c.username;
 
       var previewImg = document.getElementById("photoPreviewImg");
@@ -437,6 +466,11 @@
       document.getElementById("formTime").value = "प्रातः 7:00 बजे से सायं 5:00 बजे तक";
       document.getElementById("formStatus").checked = true;
       document.getElementById("formAllowVoterPhoto").checked = false;
+      document.getElementById("formCanSearch").checked = true;
+      document.getElementById("formCanAlpha").checked = true;
+      document.getElementById("formCanBulk").checked = true;
+      document.getElementById("formCanWithPic").checked = true;
+      document.getElementById("formCanProfile").checked = true;
 
       document.getElementById("photoPreviewImg").src = "https://api.dicebear.com/7.x/identicon/svg?seed=new";
       document.getElementById("removePhotoBtn").style.display = "none";
@@ -563,7 +597,12 @@
         election_date: document.getElementById("formDate").value.trim(),
         election_time: document.getElementById("formTime").value.trim(),
         status: document.getElementById("formStatus").checked ? "ACTIVE" : "INACTIVE",
-        allow_voter_photo: !!(document.getElementById("formAllowVoterPhoto") && document.getElementById("formAllowVoterPhoto").checked)
+        allow_voter_photo: !!(document.getElementById("formAllowVoterPhoto") && document.getElementById("formAllowVoterPhoto").checked),
+        can_search: !!(document.getElementById("formCanSearch") && document.getElementById("formCanSearch").checked),
+        can_alpha: !!(document.getElementById("formCanAlpha") && document.getElementById("formCanAlpha").checked),
+        can_bulk_slips: !!(document.getElementById("formCanBulk") && document.getElementById("formCanBulk").checked),
+        can_with_pic_slips: !!(document.getElementById("formCanWithPic") && document.getElementById("formCanWithPic").checked),
+        can_candidate_profile: !!(document.getElementById("formCanProfile") && document.getElementById("formCanProfile").checked)
       };
 
       var sUrl = "https://script.google.com/macros/s/AKfycbziw4V3cYSBnqSmUG0FDP4Ge8r-MY_B9CbGkHYcnIKayL5zV39ZRNTL7sclKz9wdRkEwQ/exec";
