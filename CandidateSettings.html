@@ -222,6 +222,11 @@
               <input type="checkbox" id="formStatus" checked style="width:16px; height:16px;"> 🟢 खाता सक्रिय रखें (ACTIVE)
             </label>
           </div>
+          <div class="form-group" style="justify-content:center;">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:700; margin-top:14px; color:#0369a1;">
+              <input type="checkbox" id="formAllowVoterPhoto" style="width:16px; height:16px;"> 📷 सामान्य मतदाता पर्ची में मतदाता फोटो शामिल करें (Allow Voter Photo)
+            </label>
+          </div>
         </div>
 
         <!-- Tab Permissions Checkboxes -->
@@ -552,8 +557,8 @@
       document.getElementById("specName").textContent = name;
       document.getElementById("specPost").textContent = post + " प्रत्याशी";
 
-      var gpRowText = "ग्राम पंचायत: " + gp;
-      if (ward && ward !== "ALL" && post !== "सरपंच") {
+      var gpRowText = "ग्राम पंचायत: " + (gp || "बांदनवाड़ा");
+      if (ward && ward !== "ALL" && post === "वार्ड पंच") {
         gpRowText += " • वार्ड नं.: " + ward;
       }
       document.getElementById("specGpRow").textContent = gpRowText;

@@ -3811,13 +3811,20 @@ html, body {
 }
 
 .candidate-banner-time {
-  font-size: 5.4pt;
+  font-size: 5.6pt;
   font-weight: 700;
   color: #047857;
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
   margin-top: 1px;
-  line-height: 1.15;
+  line-height: 1.25;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 2px 6px;
 }
 
 .candidate-banner-slogan {
@@ -5469,13 +5476,18 @@ body.layout-9 .candidate-banner-gp,
 
 body.layout-9 .candidate-banner-time,
 .printing-bulk.layout-9 .candidate-banner-time {
-  font-size: 5.4pt !important;
+  font-size: 5.2pt !important;
   font-weight: 700 !important;
   color: #047857 !important;
   text-align: center !important;
-  white-space: nowrap !important;
+  white-space: normal !important;
   margin-top: 1px !important;
-  line-height: 1.15 !important;
+  line-height: 1.2 !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 1px 4px !important;
 }
 
 body.layout-9 .candidate-banner-symbol-label,
@@ -6095,10 +6107,17 @@ html.is-superadmin-session #topbarSyncButton {
 }
 
 .candidate-banner-time {
-  font-size: 5.8pt !important;
+  font-size: 5.6pt !important;
   font-weight: 700 !important;
   color: #000000 !important;
   margin-top: 1px !important;
+  white-space: normal !important;
+  line-height: 1.25 !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 2px 6px !important;
 }
 
 .candidate-banner-slogan {
